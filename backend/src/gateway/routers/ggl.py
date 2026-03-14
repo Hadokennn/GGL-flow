@@ -1,8 +1,9 @@
 """API for GGL (Graph Guided Learning) operations."""
 
 import logging
-import json
+
 from fastapi import APIRouter, HTTPException
+from langgraph.checkpoint.base import copy_checkpoint, create_checkpoint
 from pydantic import BaseModel, Field
 
 from src.agents.checkpointer.provider import get_checkpointer
@@ -36,7 +37,9 @@ class ActiveNodeResponse(BaseModel):
     topic_graph_version: int | None = Field(default=None, description="Current graph version")
 
 
-_ggl_states: dict[str, dict] = {}
+def _get_checkpoint_tuple(thread_id: str):
+    checkpointer = get_checkpointer()
+    return checkpointer.get_tuple({"configurable": {"thread_id": thread_id}})
 
 
 def _get_thread_state(thread_id: str) -> ThreadState | None:
@@ -51,38 +54,45 @@ def _get_thread_state(thread_id: str) -> ThreadState | None:
     Raises:
         HTTPException: 404 if thread not found.
     """
-    checkpointer = get_checkpointer()
-    config = {"configurable": {"thread_id": thread_id}}
-
-    checkpoint_tuple = checkpointer.get_tuple(config)
+    checkpoint_tuple = _get_checkpoint_tuple(thread_id)
     if checkpoint_tuple is None:
         return None
-    return checkpoint_tuple.metadata or {}
+    channel_values = checkpoint_tuple.checkpoint.get("channel_values", {})
+    return channel_values if isinstance(channel_values, dict) else {}
 
 
-def _get_ggl_state_from_storage(thread_id: str) -> dict | None:
-    """Get GGL state for a thread (in-memory for Phase 1).
+def _persist_partial_state(thread_id: str, partial_state: dict) -> None:
+    """Persist partial ThreadState fields through checkpointer as a new checkpoint."""
+    checkpoint_tuple = _get_checkpoint_tuple(thread_id)
+    if checkpoint_tuple is None:
+        raise HTTPException(status_code=404, detail=f"Thread '{thread_id}' not found")
 
-    Args:
-        thread_id: The thread ID.
+    base_checkpoint = copy_checkpoint(checkpoint_tuple.checkpoint)
+    merged_values = dict(base_checkpoint.get("channel_values", {}))
+    merged_values.update(partial_state)
+    base_checkpoint["channel_values"] = merged_values
 
-    Returns:
-        GGL state dict if exists.
-    """
-    return _ggl_states.get(thread_id)
+    base_metadata = dict(checkpoint_tuple.metadata or {})
+    prev_step = base_metadata.get("step")
+    step = prev_step + 1 if isinstance(prev_step, int) else 1
+    new_checkpoint = create_checkpoint(base_checkpoint, channels=None, step=step)
+    new_metadata = {
+        **base_metadata,
+        "source": "update",
+        "step": step,
+        "writes": partial_state,
+    }
+
+    checkpointer = get_checkpointer()
+    checkpointer.put(
+        checkpoint_tuple.config,
+        new_checkpoint,
+        new_metadata,
+        {},
+    )
 
 
-def _set_ggl_state_to_storage(thread_id: str, state: dict) -> None:
-    """Set GGL state for a thread (in-memory for Phase 1).
-
-    Args:
-        thread_id: The thread ID.
-        state: The GGL state to set.
-    """
-    _ggl_states[thread_id] = state
-
-
-def _check_ggl_permission(thread_id: str) -> None:
+def _check_ggl_permission(thread_id: str, thread_state: ThreadState | None = None) -> ThreadState:
     """Check if thread has GGL enabled.
 
     Args:
@@ -91,18 +101,19 @@ def _check_ggl_permission(thread_id: str) -> None:
     Raises:
         HTTPException: 403 if thread is not a GGL thread.
     """
-    thread_state = _get_thread_state(thread_id)
+    state = thread_state or _get_thread_state(thread_id)
 
-    if thread_state is None:
+    if state is None:
         raise HTTPException(status_code=404, detail=f"Thread '{thread_id}' not found")
 
-    agent_variant = thread_state.get("agent_variant")
+    agent_variant = state.get("agent_variant") or "default"
 
     if agent_variant != "ggl":
         raise HTTPException(
             status_code=403,
             detail="GGL operations are only available for threads with agent_variant='ggl'",
         )
+    return state
 
 
 @router.get(
@@ -123,9 +134,8 @@ async def get_ggl_graph(thread_id: str) -> GGLGraphResponse:
     Raises:
         HTTPException: 403 if thread is not a GGL thread.
     """
-    _check_ggl_permission(thread_id)
-
-    ggl_state = _get_ggl_state_from_storage(thread_id)
+    thread_state = _check_ggl_permission(thread_id)
+    ggl_state = thread_state.get("ggl")
 
     if ggl_state is None:
         return GGLGraphResponse()
@@ -159,9 +169,8 @@ async def set_active_node(thread_id: str, request: ActiveNodeUpdate) -> ActiveNo
     Raises:
         HTTPException: 403 if thread is not a GGL thread, 404 if node not found.
     """
-    _check_ggl_permission(thread_id)
-
-    ggl_state = _get_ggl_state_from_storage(thread_id) or {}
+    thread_state = _check_ggl_permission(thread_id)
+    ggl_state = dict(thread_state.get("ggl") or {})
 
     topic_graph = ggl_state.get("topic_graph")
     if topic_graph:
@@ -171,7 +180,7 @@ async def set_active_node(thread_id: str, request: ActiveNodeUpdate) -> ActiveNo
             raise HTTPException(status_code=404, detail=f"Node '{request.node_id}' not found in graph")
 
     ggl_state["active_node_id"] = request.node_id
-    _set_ggl_state_to_storage(thread_id, ggl_state)
+    _persist_partial_state(thread_id, {"ggl": ggl_state})
 
     return ActiveNodeResponse(
         active_node_id=request.node_id,

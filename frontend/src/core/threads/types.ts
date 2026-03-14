@@ -1,5 +1,6 @@
 import type { Message, Thread } from "@langchain/langgraph-sdk";
 
+import type { GGLState } from "../ggl/types";
 import type { Todo } from "../todos";
 
 export interface AgentThreadState extends Record<string, unknown> {
@@ -7,6 +8,8 @@ export interface AgentThreadState extends Record<string, unknown> {
   messages: Message[];
   artifacts: string[];
   todos?: Todo[];
+  agent_variant?: string | null;
+  ggl?: GGLState | null;
 }
 
 export interface AgentThread extends Thread<AgentThreadState> {}

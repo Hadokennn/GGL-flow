@@ -17,12 +17,14 @@ interface GGLProviderProps {
   threadId: string | null;
   children: React.ReactNode;
   enabled?: boolean;
+  streamedState?: GGLState | null;
 }
 
 export function GGLProvider({
   threadId,
   children,
   enabled = false,
+  streamedState = null,
 }: GGLProviderProps) {
   const [gglState, setGglState] = useState<GGLState | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -50,6 +52,17 @@ export function GGLProvider({
   useEffect(() => {
     void refetch();
   }, [refetch]);
+
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+    if (!streamedState) {
+      return;
+    }
+    setGglState(streamedState);
+    setError(null);
+  }, [enabled, streamedState]);
 
   const value: GGLContextValue = {
     gglState,

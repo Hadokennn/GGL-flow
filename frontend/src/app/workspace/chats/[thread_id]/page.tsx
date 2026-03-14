@@ -17,6 +17,7 @@ import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { Welcome } from "@/components/workspace/welcome";
 import { GGLProvider } from "@/core/ggl/provider";
+import type { GGLState } from "@/core/ggl/types";
 import { useI18n } from "@/core/i18n/hooks";
 import { useNotification } from "@/core/notification/hooks";
 import { useLocalSettings } from "@/core/settings";
@@ -44,7 +45,6 @@ export default function ChatPage() {
       .catch(() => setAgentVariant(null));
   }, [threadId, isNewThread]);
 
-  const gglEnabled = agentVariant === "ggl";
   useSpecificChatMode();
 
   const { showNotification } = useNotification();
@@ -75,6 +75,9 @@ export default function ChatPage() {
       }
     },
   });
+  const effectiveAgentVariant =
+    (thread?.values?.agent_variant as string | null | undefined) ?? agentVariant;
+  const gglEnabled = effectiveAgentVariant === "ggl";
 
   const handleSubmit = useCallback(
     (message: PromptInputMessage) => {
@@ -88,7 +91,11 @@ export default function ChatPage() {
 
   return (
     <ThreadContext.Provider value={{ thread, isMock }}>
-      <GGLProvider threadId={threadId} enabled={gglEnabled}>
+      <GGLProvider
+        threadId={threadId}
+        enabled={gglEnabled}
+        streamedState={(thread?.values?.ggl as GGLState | null | undefined) ?? null}
+      >
         <ChatBox threadId={threadId}>
           <div className="relative flex size-full min-h-0 justify-between">
             <header

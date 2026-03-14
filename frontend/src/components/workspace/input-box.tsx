@@ -137,6 +137,7 @@ export function InputBox({
     > & {
       mode: "flash" | "thinking" | "pro" | "ultra" | undefined;
       reasoning_effort?: "minimal" | "low" | "medium" | "high";
+      agent_variant?: string;
     },
   ) => void;
   onSubmit?: (message: PromptInputMessage) => void;

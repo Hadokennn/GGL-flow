@@ -7,6 +7,7 @@ from langchain_core.runnables import RunnableConfig
 from src.agents.lead_agent.prompt import apply_prompt_template
 from src.agents.middlewares.agent_variant_middleware import AgentVariantMiddleware
 from src.agents.middlewares.clarification_middleware import ClarificationMiddleware
+from src.agents.middlewares.ggl_middleware import GGLMiddleware
 from src.agents.middlewares.memory_middleware import MemoryMiddleware
 from src.agents.middlewares.subagent_limit_middleware import SubagentLimitMiddleware
 from src.agents.middlewares.title_middleware import TitleMiddleware
@@ -35,6 +36,35 @@ def _resolve_model_name(requested_model_name: str | None = None) -> str:
     if requested_model_name and requested_model_name != default_model_name:
         logger.warning(f"Model '{requested_model_name}' not found in config; fallback to default model '{default_model_name}'.")
     return default_model_name
+
+
+def _resolve_agent_variant(config: RunnableConfig) -> str:
+    """Resolve agent variant with priority: state > configurable > default."""
+    cfg = config.get("configurable", {})
+    thread_id = cfg.get("thread_id")
+
+    # 1) Existing thread state from checkpoint is source of truth.
+    if thread_id:
+        try:
+            from src.agents.checkpointer.provider import get_checkpointer
+
+            checkpointer = get_checkpointer()
+            checkpoint_tuple = checkpointer.get_tuple({"configurable": {"thread_id": thread_id}})
+            if checkpoint_tuple and checkpoint_tuple.checkpoint:
+                channel_values = checkpoint_tuple.checkpoint.get("channel_values", {})
+                state_variant = channel_values.get("agent_variant")
+                if isinstance(state_variant, str) and state_variant:
+                    return state_variant
+        except Exception:
+            logger.debug("Failed to resolve agent_variant from checkpoint, falling back to runtime context", exc_info=True)
+
+    # 2) Bootstrap value from runtime configurable (new thread first message).
+    runtime_variant = cfg.get("agent_variant")
+    if isinstance(runtime_variant, str) and runtime_variant:
+        return runtime_variant
+
+    # 3) Safe fallback.
+    return "default"
 
 
 def _create_summarization_middleware() -> SummarizationMiddleware | None:
@@ -235,6 +265,10 @@ def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_nam
 
     # Add MemoryMiddleware (after TitleMiddleware)
     middlewares.append(MemoryMiddleware(agent_name=agent_name))
+
+    # Add GGLMiddleware only for GGL threads, after Memory and before ViewImage.
+    if _resolve_agent_variant(config) == "ggl":
+        middlewares.append(GGLMiddleware())
 
     # Add ViewImageMiddleware only if the current model supports vision.
     # Use the resolved runtime model_name from make_lead_agent to avoid stale config values.
