@@ -5,6 +5,7 @@ from langchain.agents.middleware import SummarizationMiddleware
 from langchain_core.runnables import RunnableConfig
 
 from src.agents.lead_agent.prompt import apply_prompt_template
+from src.agents.middlewares.agent_variant_middleware import AgentVariantMiddleware
 from src.agents.middlewares.clarification_middleware import ClarificationMiddleware
 from src.agents.middlewares.memory_middleware import MemoryMiddleware
 from src.agents.middlewares.subagent_limit_middleware import SubagentLimitMiddleware
@@ -214,6 +215,9 @@ def _build_middlewares(config: RunnableConfig, model_name: str | None, agent_nam
         List of middleware instances.
     """
     middlewares = build_lead_runtime_middlewares(lazy_init=True)
+
+    # AgentVariantMiddleware must be first to set agent_variant from configurable on first message
+    middlewares.append(AgentVariantMiddleware())
 
     # Add summarization middleware if enabled
     summarization_middleware = _create_summarization_middleware()

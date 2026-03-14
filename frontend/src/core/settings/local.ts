@@ -8,6 +8,7 @@ export const DEFAULT_LOCAL_SETTINGS: LocalSettings = {
     model_name: undefined,
     mode: undefined,
     reasoning_effort: undefined,
+    agent_variant: undefined,
   },
   layout: {
     sidebar_collapsed: false,
@@ -26,6 +27,7 @@ export interface LocalSettings {
   > & {
     mode: "flash" | "thinking" | "pro" | "ultra" | undefined;
     reasoning_effort?: "minimal" | "low" | "medium" | "high";
+    agent_variant?: string;
   };
   layout: {
     sidebar_collapsed: boolean;

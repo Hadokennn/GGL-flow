@@ -11,6 +11,7 @@ import {
   RocketIcon,
   XIcon,
   ZapIcon,
+  BotIcon,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import {
@@ -122,6 +123,7 @@ export function InputBox({
   > & {
     mode: "flash" | "thinking" | "pro" | "ultra" | undefined;
     reasoning_effort?: "minimal" | "low" | "medium" | "high";
+    agent_variant?: string;
   };
   extraHeader?: React.ReactNode;
   isNewThread?: boolean;
@@ -233,6 +235,22 @@ export function InputBox({
     },
     [onContextChange, context],
   );
+
+  const handleAgentVariantSelect = useCallback(
+    (variant: string) => {
+      onContextChange?.({
+        ...context,
+        agent_variant: variant,
+      });
+    },
+    [onContextChange, context],
+  );
+
+  const getAgentVariantLabel = (variant: string | undefined) => {
+    if (!variant || variant === "default") return "Default";
+    if (variant === "ggl") return "GGL";
+    return variant;
+  };
 
   const handleSubmit = useCallback(
     async (message: PromptInputMessage) => {
@@ -415,6 +433,51 @@ export function InputBox({
             </PromptInputActionMenuContent>
           </PromptInputActionMenu> */}
           <AddAttachmentsButton className="px-2!" />
+          {isNewThread && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="gap-1! px-2!" size="sm" variant="ghost">
+                  <BotIcon className="size-3" />
+                  <span className="text-xs font-normal">
+                    {getAgentVariantLabel(context.agent_variant)}
+                  </span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuLabel className="text-muted-foreground text-xs">
+                  Agent Variant
+                </DropdownMenuLabel>
+                <DropdownMenuItem
+                  onSelect={() => handleAgentVariantSelect("default")}
+                >
+                  <div className="flex items-center gap-2">
+                    <BotIcon className="size-4" />
+                    <div className="flex flex-col">
+                      <span className="font-bold">Default</span>
+                      <span className="text-xs text-muted-foreground">Standard agent</span>
+                    </div>
+                  </div>
+                  {(!context.agent_variant || context.agent_variant === "default") && (
+                    <CheckIcon className="ml-auto size-4" />
+                  )}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => handleAgentVariantSelect("ggl")}
+                >
+                  <div className="flex items-center gap-2">
+                    <BotIcon className="size-4" />
+                    <div className="flex flex-col">
+                      <span className="font-bold">GGL</span>
+                      <span className="text-xs text-muted-foreground">Graph Guided Learning</span>
+                    </div>
+                  </div>
+                  {context.agent_variant === "ggl" && (
+                    <CheckIcon className="ml-auto size-4" />
+                  )}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <PromptInputActionMenu>
             <ModeHoverGuide
               mode={

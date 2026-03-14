@@ -7,9 +7,11 @@ from fastapi import FastAPI
 from src.config.app_config import get_app_config
 from src.gateway.config import get_gateway_config
 from src.gateway.routers import (
+    agent_variants,
     agents,
     artifacts,
     channels,
+    ggl,
     mcp,
     memory,
     models,
@@ -140,6 +142,14 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
                 "description": "Manage IM channel integrations (Feishu, Slack, Telegram)",
             },
             {
+                "name": "agent-variants",
+                "description": "List available agent variants (default, ggl, etc.)",
+            },
+            {
+                "name": "ggl",
+                "description": "Graph Guided Learning operations",
+            },
+            {
                 "name": "health",
                 "description": "Health check and system status endpoints",
             },
@@ -175,6 +185,12 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
 
     # Channels API is mounted at /api/channels
     app.include_router(channels.router)
+
+    # Agent Variants API is mounted at /api/agent-variants
+    app.include_router(agent_variants.router)
+
+    # GGL API is mounted at /api/threads/{thread_id}/ggl
+    app.include_router(ggl.router)
 
     @app.get("/health", tags=["health"])
     async def health_check() -> dict:

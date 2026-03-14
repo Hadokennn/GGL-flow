@@ -1,4 +1,4 @@
-from typing import Annotated, NotRequired, TypedDict
+from typing import Annotated, Literal, NotRequired, TypedDict
 
 from langchain.agents import AgentState
 
@@ -18,13 +18,43 @@ class ViewedImageData(TypedDict):
     mime_type: str
 
 
+NodeState = Literal["unvisited", "exploring", "mastered", "blurry", "unknown"]
+
+
+class TopicNode(TypedDict):
+    id: str
+    label: str
+    state: NodeState
+
+
+class TopicGraph(TypedDict):
+    nodes: list[TopicNode]
+    edges: list[list[str]]
+
+
+class KnowledgeCard(TypedDict):
+    summary: str
+    keyPoints: list[str]
+    examples: list[str]
+    commonMistakes: list[str]
+    relatedConcepts: list[str]
+
+
+class GGLState(TypedDict):
+    active_node_id: NotRequired[str | None]
+    topic_graph: NotRequired[TopicGraph | None]
+    topic_graph_version: NotRequired[int | None]
+    digression_stack: NotRequired[list | None]
+    current_path: NotRequired[list[str] | None]
+    knowledge_cards: NotRequired[dict[str, KnowledgeCard] | None]
+
+
 def merge_artifacts(existing: list[str] | None, new: list[str] | None) -> list[str]:
     """Reducer for artifacts list - merges and deduplicates artifacts."""
     if existing is None:
         return new or []
     if new is None:
         return existing
-    # Use dict.fromkeys to deduplicate while preserving order
     return list(dict.fromkeys(existing + new))
 
 
@@ -38,11 +68,34 @@ def merge_viewed_images(existing: dict[str, ViewedImageData] | None, new: dict[s
         return new or {}
     if new is None:
         return existing
-    # Special case: empty dict means clear all viewed images
     if len(new) == 0:
         return {}
-    # Merge dictionaries, new values override existing ones for same keys
     return {**existing, **new}
+
+
+def agent_variant_reducer(current: str | None, update: str | None) -> str | None:
+    """Reducer for agent_variant - once set, cannot be changed."""
+    if current is not None:
+        return current
+    return update
+
+
+def ggl_reducer(current: GGLState | None, update: GGLState | None) -> GGLState | None:
+    """Reducer for GGL state - deep merges knowledge_cards, replaces other fields."""
+    if update is None:
+        return current
+    if current is None:
+        return update
+    merged = dict(current)
+    for k, v in update.items():
+        if v is None:
+            continue
+        if k == "knowledge_cards" and isinstance(v, dict):
+            prev = merged.get("knowledge_cards") or {}
+            merged["knowledge_cards"] = {**prev, **v}
+            continue
+        merged[k] = v
+    return merged
 
 
 class ThreadState(AgentState):
@@ -52,4 +105,6 @@ class ThreadState(AgentState):
     artifacts: Annotated[list[str], merge_artifacts]
     todos: NotRequired[list | None]
     uploaded_files: NotRequired[list[dict] | None]
-    viewed_images: Annotated[dict[str, ViewedImageData], merge_viewed_images]  # image_path -> {base64, mime_type}
+    viewed_images: Annotated[dict[str, ViewedImageData], merge_viewed_images]
+    agent_variant: Annotated[str | None, agent_variant_reducer]
+    ggl: Annotated[GGLState | None, ggl_reducer]

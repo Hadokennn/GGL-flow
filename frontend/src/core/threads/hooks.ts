@@ -336,6 +336,7 @@ export function useThreadStream({
               is_plan_mode: context.mode === "pro" || context.mode === "ultra",
               subagent_enabled: context.mode === "ultra",
               thread_id: threadId,
+              agent_variant: context.agent_variant,
             },
           },
         );
