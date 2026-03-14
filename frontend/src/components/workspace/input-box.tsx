@@ -57,6 +57,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { getBackendBaseURL } from "@/core/config";
+import { fetchAgentVariants } from "@/core/ggl/api";
 import { useI18n } from "@/core/i18n/hooks";
 import { useModels } from "@/core/models/hooks";
 import type { AgentThreadContext } from "@/core/threads";
@@ -152,6 +153,15 @@ export function InputBox({
   const [followups, setFollowups] = useState<string[]>([]);
   const [followupsHidden, setFollowupsHidden] = useState(false);
   const [followupsLoading, setFollowupsLoading] = useState(false);
+  const [agentVariants, setAgentVariants] = useState<
+    Array<{ name: string; label: string; description: string }>
+  >([]);
+
+  useEffect(() => {
+    fetchAgentVariants()
+      .then((response) => setAgentVariants(response.variants))
+      .catch(() => setAgentVariants([]));
+  }, []);
   const lastGeneratedForAiIdRef = useRef<string | null>(null);
   const wasStreamingRef = useRef(false);
 
@@ -447,34 +457,28 @@ export function InputBox({
                 <DropdownMenuLabel className="text-muted-foreground text-xs">
                   Agent Variant
                 </DropdownMenuLabel>
-                <DropdownMenuItem
-                  onSelect={() => handleAgentVariantSelect("default")}
-                >
-                  <div className="flex items-center gap-2">
-                    <BotIcon className="size-4" />
-                    <div className="flex flex-col">
-                      <span className="font-bold">Default</span>
-                      <span className="text-xs text-muted-foreground">Standard agent</span>
+                {agentVariants.map((variant) => (
+                  <DropdownMenuItem
+                    key={variant.name}
+                    onSelect={() => handleAgentVariantSelect(variant.name)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <BotIcon className="size-4" />
+                      <div className="flex flex-col">
+                        <span className="font-bold">{variant.label}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {variant.description}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                  {(!context.agent_variant || context.agent_variant === "default") && (
-                    <CheckIcon className="ml-auto size-4" />
-                  )}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => handleAgentVariantSelect("ggl")}
-                >
-                  <div className="flex items-center gap-2">
-                    <BotIcon className="size-4" />
-                    <div className="flex flex-col">
-                      <span className="font-bold">GGL</span>
-                      <span className="text-xs text-muted-foreground">Graph Guided Learning</span>
-                    </div>
-                  </div>
-                  {context.agent_variant === "ggl" && (
-                    <CheckIcon className="ml-auto size-4" />
-                  )}
-                </DropdownMenuItem>
+                    {(!context.agent_variant ||
+                      (context.agent_variant === "default" &&
+                        variant.name === "default") ||
+                      context.agent_variant === variant.name) && (
+                      <CheckIcon className="ml-auto size-4" />
+                    )}
+                  </DropdownMenuItem>
+                ))}
               </DropdownMenuContent>
             </DropdownMenu>
           )}

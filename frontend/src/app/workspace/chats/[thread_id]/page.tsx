@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { type PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { ArtifactTrigger } from "@/components/workspace/artifacts";
@@ -9,15 +9,18 @@ import {
   useSpecificChatMode,
   useThreadChat,
 } from "@/components/workspace/chats";
+import { GGLCanvas, GGLCanvasTrigger } from "@/components/workspace/ggl";
 import { InputBox } from "@/components/workspace/input-box";
 import { MessageList } from "@/components/workspace/messages";
 import { ThreadContext } from "@/components/workspace/messages/context";
 import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { Welcome } from "@/components/workspace/welcome";
+import { GGLProvider } from "@/core/ggl/provider";
 import { useI18n } from "@/core/i18n/hooks";
 import { useNotification } from "@/core/notification/hooks";
 import { useLocalSettings } from "@/core/settings";
+import { fetchThreadInfo } from "@/core/threads/api";
 import { useThreadStream } from "@/core/threads/hooks";
 import { textOfMessage } from "@/core/threads/utils";
 import { env } from "@/env";
@@ -26,8 +29,22 @@ import { cn } from "@/lib/utils";
 export default function ChatPage() {
   const { t } = useI18n();
   const [settings, setSettings] = useLocalSettings();
-
+  const [gglPanelOpen, setGglPanelOpen] = useState(false);
   const { threadId, isNewThread, setIsNewThread, isMock } = useThreadChat();
+  const [agentVariant, setAgentVariant] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!threadId || isNewThread) {
+      setAgentVariant(null);
+      return;
+    }
+    // TODO: This should be batching fetch, not only fetch variant info.
+    fetchThreadInfo(threadId)
+      .then((info) => setAgentVariant(info.agent_variant))
+      .catch(() => setAgentVariant(null));
+  }, [threadId, isNewThread]);
+
+  const gglEnabled = agentVariant === "ggl";
   useSpecificChatMode();
 
   const { showNotification } = useNotification();
@@ -71,9 +88,10 @@ export default function ChatPage() {
 
   return (
     <ThreadContext.Provider value={{ thread, isMock }}>
-      <ChatBox threadId={threadId}>
-        <div className="relative flex size-full min-h-0 justify-between">
-          <header
+      <GGLProvider threadId={threadId} enabled={gglEnabled}>
+        <ChatBox threadId={threadId}>
+          <div className="relative flex size-full min-h-0 justify-between">
+            <header
             className={cn(
               "absolute top-0 right-0 left-0 z-30 flex h-12 shrink-0 items-center px-4",
               isNewThread
@@ -86,6 +104,12 @@ export default function ChatPage() {
             </div>
             <div>
               <ArtifactTrigger />
+              {gglEnabled && (
+                <GGLCanvasTrigger
+                  isOpen={gglPanelOpen}
+                  onToggle={() => setGglPanelOpen(!gglPanelOpen)}
+                />
+              )}
             </div>
           </header>
           <main className="flex min-h-0 max-w-full grow flex-col">
@@ -142,6 +166,12 @@ export default function ChatPage() {
           </main>
         </div>
       </ChatBox>
+        {gglEnabled && gglPanelOpen && (
+          <div className="w-72 border-l bg-background">
+            <GGLCanvas threadId={threadId} />
+          </div>
+        )}
+      </GGLProvider>
     </ThreadContext.Provider>
   );
 }

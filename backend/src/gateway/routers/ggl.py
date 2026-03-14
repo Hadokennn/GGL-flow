@@ -1,7 +1,7 @@
 """API for GGL (Graph Guided Learning) operations."""
 
 import logging
-
+import json
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -54,11 +54,10 @@ def _get_thread_state(thread_id: str) -> ThreadState | None:
     checkpointer = get_checkpointer()
     config = {"configurable": {"thread_id": thread_id}}
 
-    checkpoint = checkpointer.get(config)
-    if checkpoint is None:
+    checkpoint_tuple = checkpointer.get_tuple(config)
+    if checkpoint_tuple is None:
         return None
-
-    return checkpoint.metadata.get("thread_state") if checkpoint.metadata else None
+    return checkpoint_tuple.metadata or {}
 
 
 def _get_ggl_state_from_storage(thread_id: str) -> dict | None:

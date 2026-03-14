@@ -8,7 +8,6 @@ export const DEFAULT_LOCAL_SETTINGS: LocalSettings = {
     model_name: undefined,
     mode: undefined,
     reasoning_effort: undefined,
-    agent_variant: undefined,
   },
   layout: {
     sidebar_collapsed: false,
@@ -23,11 +22,10 @@ export interface LocalSettings {
   };
   context: Omit<
     AgentThreadContext,
-    "thread_id" | "is_plan_mode" | "thinking_enabled" | "subagent_enabled"
+    "thread_id" | "is_plan_mode" | "thinking_enabled" | "subagent_enabled" | "agent_variant"
   > & {
     mode: "flash" | "thinking" | "pro" | "ultra" | undefined;
     reasoning_effort?: "minimal" | "low" | "medium" | "high";
-    agent_variant?: string;
   };
   layout: {
     sidebar_collapsed: boolean;

@@ -17,6 +17,7 @@ from src.gateway.routers import (
     models,
     skills,
     suggestions,
+    threads,
     uploads,
 )
 
@@ -191,6 +192,7 @@ This gateway provides custom endpoints for models, MCP configuration, skills, an
 
     # GGL API is mounted at /api/threads/{thread_id}/ggl
     app.include_router(ggl.router)
+    app.include_router(threads.router)
 
     @app.get("/health", tags=["health"])
     async def health_check() -> dict:
