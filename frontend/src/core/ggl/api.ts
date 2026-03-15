@@ -4,6 +4,13 @@ import type {
   ActiveNodeResponse,
   AgentVariantsResponse,
   GGLGraphResponse,
+  InitGraphRequest,
+  InitGraphResponse,
+  KnowledgeCardResponse,
+  SurveyAnswersRequest,
+  SurveyAnswersResponse,
+  SurveyRequest,
+  SurveyResponse,
 } from "./types";
 
 export async function fetchAgentVariants(): Promise<AgentVariantsResponse> {
@@ -44,6 +51,89 @@ export async function setActiveNode(
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.detail ?? "Failed to set active node");
+  }
+  return response.json();
+}
+
+export async function fetchKnowledgeCard(
+  threadId: string,
+  nodeId: string,
+): Promise<KnowledgeCardResponse> {
+  const response = await fetch(
+    `${getBackendBaseURL()}/api/threads/${threadId}/ggl/knowledge-card/${nodeId}`,
+  );
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail ?? "Failed to fetch knowledge card");
+  }
+  return response.json();
+}
+
+export async function initGGLGraph(
+  threadId: string,
+  payload: InitGraphRequest,
+): Promise<InitGraphResponse> {
+  const response = await fetch(
+    `${getBackendBaseURL()}/api/threads/${threadId}/ggl/init`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(
+      typeof error.detail === "string"
+        ? error.detail
+        : error.detail?.message ?? "Failed to initialize GGL graph",
+    );
+  }
+  return response.json();
+}
+
+export async function submitGGLSurvey(
+  threadId: string,
+  payload: SurveyRequest,
+): Promise<SurveyResponse> {
+  const response = await fetch(
+    `${getBackendBaseURL()}/api/threads/${threadId}/ggl/survey`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(
+      typeof error.detail === "string"
+        ? error.detail
+        : error.detail?.message ?? "Failed to submit survey",
+    );
+  }
+  return response.json();
+}
+
+export async function submitSurveyAnswers(
+  threadId: string,
+  payload: SurveyAnswersRequest,
+): Promise<SurveyAnswersResponse> {
+  const response = await fetch(
+    `${getBackendBaseURL()}/api/threads/${threadId}/ggl/survey-answers`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(
+      typeof error.detail === "string"
+        ? error.detail
+        : error.detail?.message ?? "Failed to submit survey answers",
+    );
   }
   return response.json();
 }

@@ -12,6 +12,11 @@ export interface AgentThreadState extends Record<string, unknown> {
   ggl?: GGLState | null;
 }
 
+export interface MessageMetadata {
+  ggl_related_node_id?: string;
+  ggl_related_node_label?: string;
+}
+
 export interface AgentThread extends Thread<AgentThreadState> {}
 
 export interface AgentThreadContext extends Record<string, unknown> {

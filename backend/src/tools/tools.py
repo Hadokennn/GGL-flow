@@ -3,6 +3,7 @@ import logging
 from langchain.tools import BaseTool
 
 from src.config import get_app_config
+from src.ggl.tools import GGL_TOOLS
 from src.reflection import resolve_variable
 from src.tools.builtins import ask_clarification_tool, present_file_tool, task_tool, view_image_tool
 
@@ -24,6 +25,7 @@ def get_available_tools(
     include_mcp: bool = True,
     model_name: str | None = None,
     subagent_enabled: bool = False,
+    agent_variant: str | None = None,
 ) -> list[BaseTool]:
     """Get all available tools from config.
 
@@ -35,6 +37,7 @@ def get_available_tools(
         include_mcp: Whether to include tools from MCP servers (default: True).
         model_name: Optional model name to determine if vision tools should be included.
         subagent_enabled: Whether to include subagent tools (task, task_status).
+        agent_variant: Thread agent variant; enables variant-specific tools.
 
     Returns:
         List of available tools.
@@ -70,6 +73,11 @@ def get_available_tools(
     if subagent_enabled:
         builtin_tools.extend(SUBAGENT_TOOLS)
         logger.info("Including subagent tools (task)")
+
+    # Add GGL tools only for ggl variant threads.
+    if agent_variant == "ggl":
+        builtin_tools.extend(GGL_TOOLS)
+        logger.info("Including GGL tools for ggl variant")
 
     # If no model_name specified, use the first model (default)
     if model_name is None and config.models:

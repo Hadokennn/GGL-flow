@@ -17,7 +17,6 @@ import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { Welcome } from "@/components/workspace/welcome";
 import { GGLProvider } from "@/core/ggl/provider";
-import type { GGLState } from "@/core/ggl/types";
 import { useI18n } from "@/core/i18n/hooks";
 import { useNotification } from "@/core/notification/hooks";
 import { useLocalSettings } from "@/core/settings";
@@ -76,7 +75,7 @@ export default function ChatPage() {
     },
   });
   const effectiveAgentVariant =
-    (thread?.values?.agent_variant as string | null | undefined) ?? agentVariant;
+    thread?.values?.agent_variant ?? agentVariant;
   const gglEnabled = effectiveAgentVariant === "ggl";
 
   const handleSubmit = useCallback(
@@ -94,7 +93,7 @@ export default function ChatPage() {
       <GGLProvider
         threadId={threadId}
         enabled={gglEnabled}
-        streamedState={(thread?.values?.ggl as GGLState | null | undefined) ?? null}
+        streamedState={thread?.values?.ggl ?? null}
       >
         <ChatBox threadId={threadId}>
           <div className="relative flex size-full min-h-0 justify-between">

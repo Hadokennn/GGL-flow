@@ -1,7 +1,9 @@
+"use client";
+
 import type { Message } from "@langchain/langgraph-sdk";
 import { FileIcon, Loader2Icon } from "lucide-react";
 import { useParams } from "next/navigation";
-import { memo, useMemo, type ImgHTMLAttributes } from "react";
+import { memo, useEffect, useMemo, useRef, type ImgHTMLAttributes } from "react";
 import rehypeKatex from "rehype-katex";
 
 import { Loader } from "@/components/ai-elements/loader";
@@ -19,6 +21,7 @@ import {
 import { Task, TaskTrigger } from "@/components/ai-elements/task";
 import { Badge } from "@/components/ui/badge";
 import { resolveArtifactURL } from "@/core/artifacts/utils";
+import { useGGL } from "@/core/ggl/provider";
 import { useI18n } from "@/core/i18n/hooks";
 import {
   extractContentFromMessage,
@@ -45,35 +48,69 @@ export function MessageListItem({
   isLoading?: boolean;
 }) {
   const isHuman = message.type === "human";
+  const messageRef = useRef<HTMLDivElement>(null);
+  const { registerMessageScrollHandler, setHighlightedNodeId } = useGGL();
+
+  // 从消息元数据中提取关联的节点信息
+  const relatedNodeId = message.additional_kwargs?.ggl_related_node_id as string | undefined;
+  const relatedNodeLabel = message.additional_kwargs?.ggl_related_node_label as string | undefined;
+
+  // 注册消息滚动处理器
+  useEffect(() => {
+    if (!relatedNodeId) return;
+    
+    const unregister = registerMessageScrollHandler((targetNodeId: string) => {
+      if (targetNodeId === relatedNodeId && messageRef.current) {
+        messageRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    });
+
+    return unregister;
+  }, [relatedNodeId, registerMessageScrollHandler]);
+
   return (
-    <AIElementMessage
-      className={cn("group/conversation-message relative w-full", className)}
-      from={isHuman ? "user" : "assistant"}
+    <div
+      ref={messageRef}
+      onMouseEnter={() => {
+        if (relatedNodeId) {
+          setHighlightedNodeId(relatedNodeId);
+        }
+      }}
+      onMouseLeave={() => {
+        setHighlightedNodeId(null);
+      }}
     >
-      <MessageContent
-        className={isHuman ? "w-fit" : "w-full"}
-        message={message}
-        isLoading={isLoading}
-      />
-      {!isLoading && (
-        <MessageToolbar
-          className={cn(
-            isHuman ? "-bottom-9 justify-end" : "-bottom-8",
-            "absolute right-0 left-0 z-20 opacity-0 transition-opacity delay-200 duration-300 group-hover/conversation-message:opacity-100",
-          )}
-        >
-          <div className="flex gap-1">
-            <CopyButton
-              clipboardData={
-                extractContentFromMessage(message) ??
-                extractReasoningContentFromMessage(message) ??
-                ""
-              }
-            />
-          </div>
-        </MessageToolbar>
-      )}
-    </AIElementMessage>
+      <AIElementMessage
+        className={cn("group/conversation-message relative w-full", className)}
+        from={isHuman ? "user" : "assistant"}
+      >
+        <MessageContent
+          className={isHuman ? "w-fit" : "w-full"}
+          message={message}
+          isLoading={isLoading}
+          relatedNodeId={relatedNodeId}
+          relatedNodeLabel={relatedNodeLabel}
+        />
+        {!isLoading && (
+          <MessageToolbar
+            className={cn(
+              isHuman ? "-bottom-9 justify-end" : "-bottom-8",
+              "absolute right-0 left-0 z-20 opacity-0 transition-opacity delay-200 duration-300 group-hover/conversation-message:opacity-100",
+            )}
+          >
+            <div className="flex gap-1">
+              <CopyButton
+                clipboardData={
+                  extractContentFromMessage(message) ??
+                  extractReasoningContentFromMessage(message) ??
+                  ""
+                }
+              />
+            </div>
+          </MessageToolbar>
+        )}
+      </AIElementMessage>
+    </div>
   );
 }
 
@@ -111,10 +148,14 @@ function MessageContent_({
   className,
   message,
   isLoading = false,
+  relatedNodeId,
+  relatedNodeLabel,
 }: {
   className?: string;
   message: Message;
   isLoading?: boolean;
+  relatedNodeId?: string;
+  relatedNodeLabel?: string;
 }) {
   const rehypePlugins = useRehypeSplitWordsIntoSpans(isLoading);
   const isHuman = message.type === "human";
@@ -155,10 +196,21 @@ function MessageContent_({
       <RichFilesList files={files} threadId={thread_id} />
     ) : null;
 
+  // 节点关联标签
+  const nodeRelatedBadge = relatedNodeId && relatedNodeLabel ? (
+    <Badge
+      variant="outline"
+      className="mb-2 text-xs text-muted-foreground border-primary/30 bg-primary/5"
+    >
+      关联节点: {relatedNodeLabel}
+    </Badge>
+  ) : null;
+
   // Uploading state: mock AI message shown while files upload
   if (message.additional_kwargs?.element === "task") {
     return (
       <AIElementMessageContent className={className}>
+        {nodeRelatedBadge}
         <Task defaultOpen={false}>
           <TaskTrigger title="">
             <div className="text-muted-foreground flex w-full cursor-default items-center gap-2 text-sm select-none">
@@ -175,6 +227,7 @@ function MessageContent_({
   if (!isHuman && reasoningContent && !rawContent) {
     return (
       <AIElementMessageContent className={className}>
+        {nodeRelatedBadge}
         <Reasoning isStreaming={isLoading}>
           <ReasoningTrigger />
           <ReasoningContent>{reasoningContent}</ReasoningContent>
@@ -207,6 +260,7 @@ function MessageContent_({
 
   return (
     <AIElementMessageContent className={className}>
+      {nodeRelatedBadge}
       {filesList}
       <MarkdownContent
         content={contentToDisplay}
