@@ -9,7 +9,7 @@ import {
   useSpecificChatMode,
   useThreadChat,
 } from "@/components/workspace/chats";
-import { GGLCanvas, GGLCanvasTrigger } from "@/components/workspace/ggl";
+import { KnowledgeMapTrigger } from "@/components/workspace/ggl";
 import { InputBox } from "@/components/workspace/input-box";
 import { MessageList } from "@/components/workspace/messages";
 import { ThreadContext } from "@/components/workspace/messages/context";
@@ -30,7 +30,6 @@ import { cn } from "@/lib/utils";
 export default function ChatPage() {
   const { t } = useI18n();
   const [settings, setSettings] = useLocalSettings();
-  const [gglPanelOpen, setGglPanelOpen] = useState(false);
   const { threadId, isNewThread, setIsNewThread, isMock } = useThreadChat();
   const [agentVariant, setAgentVariant] = useState<string | null>(null);
 
@@ -96,7 +95,7 @@ export default function ChatPage() {
         enabled={gglEnabled}
         streamedState={(thread?.values?.ggl as GGLState | null | undefined) ?? null}
       >
-        <ChatBox threadId={threadId}>
+        <ChatBox gglEnabled={gglEnabled} threadId={threadId}>
           <div className="relative flex size-full min-h-0 justify-between">
             <header
             className={cn(
@@ -111,12 +110,7 @@ export default function ChatPage() {
             </div>
             <div>
               <ArtifactTrigger />
-              {gglEnabled && (
-                <GGLCanvasTrigger
-                  isOpen={gglPanelOpen}
-                  onToggle={() => setGglPanelOpen(!gglPanelOpen)}
-                />
-              )}
+              <KnowledgeMapTrigger />
             </div>
           </header>
           <main className="flex min-h-0 max-w-full grow flex-col">
@@ -173,11 +167,6 @@ export default function ChatPage() {
           </main>
         </div>
       </ChatBox>
-        {gglEnabled && gglPanelOpen && (
-          <div className="w-72 border-l bg-background">
-            <GGLCanvas threadId={threadId} />
-          </div>
-        )}
       </GGLProvider>
     </ThreadContext.Provider>
   );

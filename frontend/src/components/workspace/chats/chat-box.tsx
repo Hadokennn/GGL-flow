@@ -17,23 +17,29 @@ import {
   ArtifactFileList,
   useArtifacts,
 } from "../artifacts";
+import { KnowledgeMap } from "../ggl";
 import { useThread } from "../messages/context";
 
-const CLOSE_MODE = { chat: 100, artifacts: 0 };
-const OPEN_MODE = { chat: 60, artifacts: 40 };
+import { RightPanelProvider, useRightPanel } from "./right-panel-context";
 
-const ChatBox: React.FC<{ children: React.ReactNode; threadId: string }> = ({
-  children,
-  threadId,
-}) => {
+const CLOSE_MODE = { chat: 100, "right-panel": 0 };
+const OPEN_MODE = { chat: 60, "right-panel": 40 };
+
+const ChatBoxInner: React.FC<{
+  children: React.ReactNode;
+  threadId: string;
+}> = ({ children, threadId }) => {
   const { thread } = useThread();
   const threadIdRef = useRef(threadId);
   const layoutRef = useRef<GroupImperativeHandle>(null);
 
+  const rightPanel = useRightPanel();
+  if (!rightPanel) {
+    throw new Error("ChatBoxInner must be used within RightPanelProvider");
+  }
+  const { view: rightPanelView, close: closeRightPanel } = rightPanel;
   const {
     artifacts,
-    open: artifactsOpen,
-    setOpen: setArtifactsOpen,
     setArtifacts,
     select: selectArtifact,
     deselect,
@@ -77,12 +83,13 @@ const ChatBox: React.FC<{ children: React.ReactNode; threadId: string }> = ({
     thread.values.artifacts,
   ]);
 
+  const panelOpen = rightPanelView !== null;
   const artifactPanelOpen = useMemo(() => {
     if (env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true") {
-      return artifactsOpen && artifacts?.length > 0;
+      return panelOpen && (rightPanelView === "ggl" || (artifacts?.length ?? 0) > 0);
     }
-    return artifactsOpen;
-  }, [artifactsOpen, artifacts]);
+    return panelOpen;
+  }, [panelOpen, rightPanelView, artifacts]);
 
   useEffect(() => {
     if (layoutRef.current) {
@@ -97,7 +104,7 @@ const ChatBox: React.FC<{ children: React.ReactNode; threadId: string }> = ({
   return (
     <ResizablePanelGroup
       orientation="horizontal"
-      defaultLayout={{ chat: 100, artifacts: 0 }}
+      defaultLayout={{ chat: 100, "right-panel": 0 }}
       groupRef={layoutRef}
     >
       <ResizablePanel className="relative" defaultSize={100} id="chat">
@@ -112,61 +119,75 @@ const ChatBox: React.FC<{ children: React.ReactNode; threadId: string }> = ({
       <ResizablePanel
         className={cn(
           "transition-all duration-300 ease-in-out",
-          !artifactsOpen && "opacity-0",
+          !panelOpen && "opacity-0",
         )}
-        id="artifacts"
+        id="right-panel"
       >
         <div
           className={cn(
-            "h-full p-4 transition-transform duration-300 ease-in-out",
+            "relative flex h-full flex-col p-4 transition-transform duration-300 ease-in-out",
             artifactPanelOpen ? "translate-x-0" : "translate-x-full",
           )}
         >
-          {selectedArtifact ? (
-            <ArtifactFileDetail
-              className="size-full"
-              filepath={selectedArtifact}
-              threadId={threadId}
-            />
-          ) : (
-            <div className="relative flex size-full justify-center">
-              <div className="absolute top-1 right-1 z-30">
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  onClick={() => {
-                    setArtifactsOpen(false);
-                  }}
-                >
-                  <XIcon />
-                </Button>
+          <div className="absolute right-1 top-1 z-30">
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={closeRightPanel}
+            >
+              <XIcon />
+            </Button>
+          </div>
+          {rightPanelView === "ggl" ? (
+            <KnowledgeMap className="min-h-0 flex-1" threadId={threadId} />
+          ) : rightPanelView === "artifacts" ? (
+            selectedArtifact ? (
+              <ArtifactFileDetail
+                className="size-full"
+                filepath={selectedArtifact}
+                threadId={threadId}
+              />
+            ) : (
+              <div className="relative flex size-full justify-center">
+                {thread.values.artifacts?.length === 0 ? (
+                  <ConversationEmptyState
+                    icon={<FilesIcon />}
+                    title="No artifact selected"
+                    description="Select an artifact to view its details"
+                  />
+                ) : (
+                  <div className="flex size-full max-w-(--container-width-sm) flex-col justify-center p-4 pt-8">
+                    <header className="shrink-0">
+                      <h2 className="text-lg font-medium">Artifacts</h2>
+                    </header>
+                    <main className="min-h-0 grow">
+                      <ArtifactFileList
+                        className="max-w-(--container-width-sm) p-4 pt-12"
+                        files={thread.values.artifacts ?? []}
+                        threadId={threadId}
+                      />
+                    </main>
+                  </div>
+                )}
               </div>
-              {thread.values.artifacts?.length === 0 ? (
-                <ConversationEmptyState
-                  icon={<FilesIcon />}
-                  title="No artifact selected"
-                  description="Select an artifact to view its details"
-                />
-              ) : (
-                <div className="flex size-full max-w-(--container-width-sm) flex-col justify-center p-4 pt-8">
-                  <header className="shrink-0">
-                    <h2 className="text-lg font-medium">Artifacts</h2>
-                  </header>
-                  <main className="min-h-0 grow">
-                    <ArtifactFileList
-                      className="max-w-(--container-width-sm) p-4 pt-12"
-                      files={thread.values.artifacts ?? []}
-                      threadId={threadId}
-                    />
-                  </main>
-                </div>
-              )}
-            </div>
-          )}
+            )
+          ) : null}
         </div>
       </ResizablePanel>
     </ResizablePanelGroup>
   );
 };
+
+const ChatBox: React.FC<{
+  children: React.ReactNode;
+  threadId: string;
+  gglEnabled?: boolean;
+}> = ({ children, threadId, gglEnabled = false }) => (
+  <RightPanelProvider gglEnabled={gglEnabled}>
+    <ChatBoxInner threadId={threadId}>
+      {children}
+    </ChatBoxInner>
+  </RightPanelProvider>
+);
 
 export { ChatBox };

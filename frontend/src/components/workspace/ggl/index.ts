@@ -1,2 +1,2 @@
-export { GGLCanvas } from "./ggl-canvas";
-export { GGLCanvasTrigger } from "./ggl-canvas-trigger";
+export { KnowledgeMap } from "./knowledge-map";
+export { KnowledgeMapTrigger } from "./knowledge-map-trigger";
