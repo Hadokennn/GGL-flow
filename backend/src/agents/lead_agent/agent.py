@@ -359,9 +359,16 @@ def make_lead_agent(config: RunnableConfig):
         )
 
     # Default lead agent (unchanged behavior)
+    base_tools = get_available_tools(model_name=model_name, groups=agent_config.tool_groups if agent_config else None, subagent_enabled=subagent_enabled)
+
+    # GGL variant gets the update_ggl_graph and update_knowledge_card tools in addition to base tools
+    if _resolve_agent_variant(config) == "ggl":
+        from src.ggl.tools import update_ggl_graph_tool as _ggl_tool  # noqa: PLC0415
+        base_tools = base_tools + [_ggl_tool]
+
     return create_agent(
         model=create_chat_model(name=model_name, thinking_enabled=thinking_enabled, reasoning_effort=reasoning_effort),
-        tools=get_available_tools(model_name=model_name, groups=agent_config.tool_groups if agent_config else None, subagent_enabled=subagent_enabled),
+        tools=base_tools,
         middleware=_build_middlewares(config, model_name=model_name, agent_name=agent_name),
         system_prompt=apply_prompt_template(subagent_enabled=subagent_enabled, max_concurrent_subagents=max_concurrent_subagents, agent_name=agent_name),
         state_schema=ThreadState,

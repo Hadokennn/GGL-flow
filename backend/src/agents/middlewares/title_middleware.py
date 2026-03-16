@@ -36,8 +36,14 @@ class TitleMiddleware(AgentMiddleware[TitleMiddlewareState]):
         if len(messages) < 2:
             return False
 
-        # Count user and assistant messages
-        user_messages = [m for m in messages if m.type == "human"]
+        # Count user and assistant messages.
+        # Exclude system-injected HumanMessages (e.g. ggl_context, memory) — only count
+        # messages without a custom "name" or with name "user" / "default".
+        user_messages = [
+            m
+            for m in messages
+            if m.type == "human" and (not getattr(m, "name", None) or getattr(m, "name", "") in ("user", "default"))
+        ]
         assistant_messages = [m for m in messages if m.type == "ai"]
 
         # Generate title after first complete exchange
@@ -48,8 +54,13 @@ class TitleMiddleware(AgentMiddleware[TitleMiddlewareState]):
         config = get_title_config()
         messages = state.get("messages", [])
 
-        # Get first user message and first assistant response
-        user_msg_content = next((m.content for m in messages if m.type == "human"), "")
+        # Get first real user message (exclude system-injected ones like ggl_context) and first assistant response
+        real_user_msgs = [
+            m
+            for m in messages
+            if m.type == "human" and (not getattr(m, "name", None) or getattr(m, "name", "") in ("user", "default"))
+        ]
+        user_msg_content = real_user_msgs[0].content if real_user_msgs else ""
         assistant_msg_content = next((m.content for m in messages if m.type == "ai"), "")
 
         # Ensure content is string (LangChain messages can have list content)

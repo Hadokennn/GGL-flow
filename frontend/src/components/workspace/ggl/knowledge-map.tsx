@@ -3,20 +3,22 @@
 import {
   Background,
   type Edge,
+  Handle,
   type Node,
   type NodeProps,
+  Position,
   ReactFlow,
   ReactFlowProvider,
   useNodesState,
   useEdgesState,
 } from "@xyflow/react";
-import { AlertCircle, BookOpen, Lightbulb } from "lucide-react";
-import { useCallback, useEffect, useMemo } from "react";
+import { AlertCircle, BookOpen, CheckCircle2, Lightbulb, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { setActiveNode } from "@/core/ggl/api";
 import { useGGL } from "@/core/ggl/provider";
-import type { TopicNode as TopicNodeType } from "@/core/ggl/types";
+import type { KnowledgeCard, TopicNode as TopicNodeType } from "@/core/ggl/types";
 import { cn } from "@/lib/utils";
 
 import "@xyflow/react/dist/style.css";
@@ -31,12 +33,14 @@ const NODE_STATE_COLORS: Record<string, string> = {
 
 type TopicNodeData = Pick<TopicNodeType, "label" | "state"> & {
   active?: boolean;
+  hasCard?: boolean;
 };
 
 function TopicNode({ data, selected }: NodeProps<Node<TopicNodeData, "topic">>) {
   const state = data?.state ?? "unknown";
   const label = data?.label ?? "";
   const isActive = data?.active ?? false;
+  const hasCard = data?.hasCard ?? false;
 
   return (
     <div
@@ -46,12 +50,98 @@ function TopicNode({ data, selected }: NodeProps<Node<TopicNodeData, "topic">>) 
         (selected || isActive) && "ring-2 ring-blue-500 ring-offset-2",
       )}
     >
-      {label}
+      <Handle type="target" position={Position.Top} />
+      <Handle type="source" position={Position.Bottom} />
+      <div className="flex items-center gap-1">
+        {state === "mastered" && hasCard && (
+          <CheckCircle2 className="h-3 w-3 shrink-0 text-green-600" />
+        )}
+        {label}
+      </div>
     </div>
   );
 }
 
 const nodeTypes = { topic: TopicNode };
+
+// ---------------------------------------------------------------------------
+// KnowledgeCardPreview
+// ---------------------------------------------------------------------------
+
+interface KnowledgeCardPreviewProps {
+  nodeLabel: string;
+  card: KnowledgeCard;
+  onClose: () => void;
+}
+
+function KnowledgeCardPreview({ nodeLabel, card, onClose }: KnowledgeCardPreviewProps) {
+  return (
+    <div className="absolute bottom-0 left-0 right-0 z-10 rounded-t-xl border bg-background shadow-lg">
+      <div className="flex items-center justify-between border-b px-4 py-2">
+        <div className="flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 text-green-500" />
+          <span className="text-sm font-medium">{nodeLabel}</span>
+        </div>
+        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+      <div className="max-h-72 overflow-y-auto px-4 py-3 space-y-3 text-xs">
+        {card.summary && (
+          <p className="text-muted-foreground leading-relaxed">{card.summary}</p>
+        )}
+        {card.keyPoints?.length > 0 && (
+          <div>
+            <div className="mb-1 font-semibold text-foreground">关键知识点</div>
+            <ul className="space-y-1">
+              {card.keyPoints.map((point, i) => (
+                <li key={i} className="flex gap-1.5 text-muted-foreground">
+                  <span className="mt-0.5 shrink-0 text-primary">•</span>
+                  {point}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {card.examples?.length > 0 && (
+          <div>
+            <div className="mb-1 font-semibold text-foreground">示例</div>
+            <ul className="space-y-1">
+              {card.examples.map((ex, i) => (
+                <li key={i} className="text-muted-foreground">{ex}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {card.commonMistakes?.length > 0 && (
+          <div>
+            <div className="mb-1 font-semibold text-foreground">常见误区</div>
+            <ul className="space-y-1">
+              {card.commonMistakes.map((m, i) => (
+                <li key={i} className="flex gap-1.5 text-muted-foreground">
+                  <span className="mt-0.5 shrink-0 text-destructive">!</span>
+                  {m}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {card.relatedConcepts?.length > 0 && (
+          <div>
+            <div className="mb-1 font-semibold text-foreground">相关概念</div>
+            <div className="flex flex-wrap gap-1">
+              {card.relatedConcepts.map((c, i) => (
+                <span key={i} className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground">
+                  {c}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function circularLayout(
   nodes: TopicNodeType[],
@@ -88,36 +178,61 @@ interface KnowledgeMapProps {
 
 function KnowledgeMapInner({ threadId, className }: KnowledgeMapProps) {
   const { gglState, refetch, isLoading, isEnabled, error } = useGGL();
+  const [previewNodeId, setPreviewNodeId] = useState<string | null>(null);
 
   type TopicFlowNode = Node<TopicNodeData, "topic">;
   const [nodes, setNodes, onNodesChange] = useNodesState<TopicFlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+
+  const knowledgeCards = gglState?.knowledge_cards ?? null;
 
   const flowNodes = useMemo(() => {
     if (!gglState?.topic_graph?.nodes.length) return [];
     return circularLayout(
       gglState.topic_graph.nodes,
       gglState.active_node_id ?? null,
-    );
-  }, [gglState?.topic_graph?.nodes, gglState?.active_node_id]);
+    ).map((n) => ({
+      ...n,
+      data: {
+        ...n.data,
+        hasCard: Boolean(knowledgeCards?.[n.id]),
+      },
+    }));
+  }, [gglState?.topic_graph?.nodes, gglState?.active_node_id, knowledgeCards]);
 
   const flowEdges = useMemo(() => {
-    if (!gglState?.topic_graph?.edges.length) return [];
-    return gglState.topic_graph.edges.map(([source, target], i) => ({
-      id: `e-${source}-${target}-${i}`,
-      source,
-      target,
-    }));
-  }, [gglState?.topic_graph?.edges]);
+    if (!gglState?.topic_graph?.edges?.length) return [];
+    const nodeIds = new Set(
+      gglState.topic_graph.nodes.map((n) => n.id),
+    );
+    return gglState.topic_graph.edges
+      .filter(([source, target]) => nodeIds.has(source) && nodeIds.has(target))
+      .map(([source, target], i) => ({
+        id: `e-${source}-${target}-${i}`,
+        source,
+        target,
+      }));
+  }, [gglState?.topic_graph?.edges, gglState?.topic_graph?.nodes]);
 
   useEffect(() => {
     setNodes(flowNodes);
     setEdges(flowEdges);
   }, [flowNodes, flowEdges, setNodes, setEdges]);
 
+  const handleNodeClick = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      const card = knowledgeCards?.[node.id];
+      if (card) {
+        setPreviewNodeId((prev) => (prev === node.id ? null : node.id));
+      }
+    },
+    [knowledgeCards],
+  );
+
   const handleNodeDoubleClick = useCallback(
     async (_: React.MouseEvent, node: Node) => {
       if (!isEnabled) return;
+      setPreviewNodeId(null);
       try {
         await setActiveNode(threadId, node.id);
         await refetch();
@@ -218,9 +333,10 @@ function KnowledgeMapInner({ threadId, className }: KnowledgeMapProps) {
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onNodeClick={handleNodeClick}
           onNodeDoubleClick={handleNodeDoubleClick}
           nodeTypes={nodeTypes}
-          nodesDraggable={false}
+          nodesDraggable={true}
           nodesConnectable={true}
           elementsSelectable={true}
           fitView
@@ -249,6 +365,17 @@ function KnowledgeMapInner({ threadId, className }: KnowledgeMapProps) {
           学习路径: {gglState.current_path.join(" → ")}
         </div>
       )}
+
+      {previewNodeId && knowledgeCards?.[previewNodeId] && (() => {
+        const node = topicNodes.find((n) => n.id === previewNodeId);
+        return (
+          <KnowledgeCardPreview
+            nodeLabel={node?.label ?? previewNodeId}
+            card={knowledgeCards[previewNodeId]!}
+            onClose={() => setPreviewNodeId(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

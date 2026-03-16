@@ -47,6 +47,13 @@ class GGLState(TypedDict):
     digression_stack: NotRequired[list | None]
     current_path: NotRequired[list[str] | None]
     knowledge_cards: NotRequired[dict[str, KnowledgeCard] | None]
+    # Node IDs whose knowledge card is pending background generation.
+    # Set by update_ggl_graph when a node is newly marked mastered.
+    # Cleared by GGLMiddleware.after_agent after enqueuing background tasks.
+    pending_card_node_ids: NotRequired[list[str] | None]
+    # Node IDs for which a knowledge card has been successfully generated.
+    # Used by the frontend to show the card preview icon on mastered nodes.
+    knowledge_card_node_ids: NotRequired[list[str] | None]
 
 
 def merge_artifacts(existing: list[str] | None, new: list[str] | None) -> list[str]:
@@ -81,18 +88,35 @@ def agent_variant_reducer(current: str | None, update: str | None) -> str | None
 
 
 def ggl_reducer(current: GGLState | None, update: GGLState | None) -> GGLState | None:
-    """Reducer for GGL state - deep merges knowledge_cards, replaces other fields."""
+    """Reducer for GGL state.
+
+    - knowledge_cards: deep-merged (new cards added, existing preserved)
+    - pending_card_node_ids: empty list [] clears the field (signals "all done")
+    - other fields: replaced when not None
+    """
     if update is None:
         return current
     if current is None:
         return update
     merged = dict(current)
     for k, v in update.items():
-        if v is None:
+        if k == "knowledge_cards":
+            if isinstance(v, dict):
+                prev = merged.get("knowledge_cards") or {}
+                merged["knowledge_cards"] = {**prev, **v}
             continue
-        if k == "knowledge_cards" and isinstance(v, dict):
-            prev = merged.get("knowledge_cards") or {}
-            merged["knowledge_cards"] = {**prev, **v}
+        if k == "pending_card_node_ids":
+            # Empty list explicitly clears; None means "no change"
+            if v is not None:
+                merged["pending_card_node_ids"] = v if v else None
+            continue
+        if k == "knowledge_card_node_ids":
+            # Append-only merge; None means "no change"
+            if isinstance(v, list):
+                prev = merged.get("knowledge_card_node_ids") or []
+                merged["knowledge_card_node_ids"] = list(dict.fromkeys(prev + v))
+            continue
+        if v is None:
             continue
         merged[k] = v
     return merged

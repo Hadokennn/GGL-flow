@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { type PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { ArtifactTrigger } from "@/components/workspace/artifacts";
@@ -9,6 +9,7 @@ import {
   useSpecificChatMode,
   useThreadChat,
 } from "@/components/workspace/chats";
+import { useRightPanel } from "@/components/workspace/chats/right-panel-context";
 import { KnowledgeMapTrigger } from "@/components/workspace/ggl";
 import { InputBox } from "@/components/workspace/input-box";
 import { MessageList } from "@/components/workspace/messages";
@@ -16,6 +17,7 @@ import { ThreadContext } from "@/components/workspace/messages/context";
 import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { Welcome } from "@/components/workspace/welcome";
+import { useGGLState } from "@/core/ggl/provider";
 import { GGLProvider } from "@/core/ggl/provider";
 import type { GGLState } from "@/core/ggl/types";
 import { useI18n } from "@/core/i18n/hooks";
@@ -26,6 +28,29 @@ import { useThreadStream } from "@/core/threads/hooks";
 import { textOfMessage } from "@/core/threads/utils";
 import { env } from "@/env";
 import { cn } from "@/lib/utils";
+
+/**
+ * Watches gglState inside RightPanelProvider context and auto-opens the
+ * Knowledge Map panel when topic_graph first becomes available.
+ */
+function GGLAutoOpen() {
+  const gglState = useGGLState();
+  const rightPanel = useRightPanel();
+  const hasAutoOpened = useRef(false);
+
+  useEffect(() => {
+    if (
+      !hasAutoOpened.current &&
+      gglState?.topic_graph &&
+      rightPanel?.view === null
+    ) {
+      hasAutoOpened.current = true;
+      rightPanel.openGGL();
+    }
+  }, [gglState?.topic_graph, rightPanel]);
+
+  return null;
+}
 
 export default function ChatPage() {
   const { t } = useI18n();
@@ -96,6 +121,7 @@ export default function ChatPage() {
         streamedState={(thread?.values?.ggl as GGLState | null | undefined) ?? null}
       >
         <ChatBox gglEnabled={gglEnabled} threadId={threadId}>
+          <GGLAutoOpen />
           <div className="relative flex size-full min-h-0 justify-between">
             <header
             className={cn(
@@ -108,7 +134,7 @@ export default function ChatPage() {
             <div className="flex w-full items-center text-sm font-medium">
               <ThreadTitle threadId={threadId} thread={thread} />
             </div>
-            <div>
+            <div className="flex gap-4">
               <ArtifactTrigger />
               <KnowledgeMapTrigger />
             </div>

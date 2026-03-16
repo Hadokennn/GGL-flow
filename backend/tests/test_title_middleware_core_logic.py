@@ -59,6 +59,19 @@ class TestTitleMiddlewareCoreLogic:
         }
         assert middleware._should_generate_title(titled_state) is False
 
+    def test_should_generate_title_when_ggl_context_injected(self):
+        """GGL mode injects HumanMessage(name='ggl_context'); should still generate title."""
+        _set_test_title_config(enabled=True)
+        middleware = TitleMiddleware()
+        state = {
+            "messages": [
+                HumanMessage(content="我想学机器学习"),
+                HumanMessage(name="ggl_context", content="<ggl_context>...</ggl_context>"),
+                AIMessage(content="正在为你构建知识图谱..."),
+            ]
+        }
+        assert middleware._should_generate_title(state) is True
+
     def test_should_not_generate_title_after_second_user_turn(self):
         _set_test_title_config(enabled=True)
         middleware = TitleMiddleware()

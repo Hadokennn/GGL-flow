@@ -3,11 +3,10 @@
 import logging
 
 from fastapi import APIRouter, HTTPException
-from langgraph.checkpoint.base import copy_checkpoint, create_checkpoint
 from pydantic import BaseModel, Field
 
-from src.agents.checkpointer.provider import get_checkpointer
 from src.agents.thread_state import ThreadState
+from src.gateway.checkpoint_utils import get_checkpoint_tuple, persist_partial_state
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/threads", tags=["ggl"])
@@ -37,24 +36,8 @@ class ActiveNodeResponse(BaseModel):
     topic_graph_version: int | None = Field(default=None, description="Current graph version")
 
 
-def _get_checkpoint_tuple(thread_id: str):
-    checkpointer = get_checkpointer()
-    return checkpointer.get_tuple({"configurable": {"thread_id": thread_id}})
-
-
 def _get_thread_state(thread_id: str) -> ThreadState | None:
-    """Get thread state from checkpointer.
-
-    Args:
-        thread_id: The thread ID.
-
-    Returns:
-        ThreadState from checkpointer, or None if thread not found.
-
-    Raises:
-        HTTPException: 404 if thread not found.
-    """
-    checkpoint_tuple = _get_checkpoint_tuple(thread_id)
+    checkpoint_tuple = get_checkpoint_tuple(thread_id)
     if checkpoint_tuple is None:
         return None
     channel_values = checkpoint_tuple.checkpoint.get("channel_values", {})
@@ -62,34 +45,11 @@ def _get_thread_state(thread_id: str) -> ThreadState | None:
 
 
 def _persist_partial_state(thread_id: str, partial_state: dict) -> None:
-    """Persist partial ThreadState fields through checkpointer as a new checkpoint."""
-    checkpoint_tuple = _get_checkpoint_tuple(thread_id)
-    if checkpoint_tuple is None:
-        raise HTTPException(status_code=404, detail=f"Thread '{thread_id}' not found")
-
-    base_checkpoint = copy_checkpoint(checkpoint_tuple.checkpoint)
-    merged_values = dict(base_checkpoint.get("channel_values", {}))
-    merged_values.update(partial_state)
-    base_checkpoint["channel_values"] = merged_values
-
-    base_metadata = dict(checkpoint_tuple.metadata or {})
-    prev_step = base_metadata.get("step")
-    step = prev_step + 1 if isinstance(prev_step, int) else 1
-    new_checkpoint = create_checkpoint(base_checkpoint, channels=None, step=step)
-    new_metadata = {
-        **base_metadata,
-        "source": "update",
-        "step": step,
-        "writes": partial_state,
-    }
-
-    checkpointer = get_checkpointer()
-    checkpointer.put(
-        checkpoint_tuple.config,
-        new_checkpoint,
-        new_metadata,
-        {},
-    )
+    """Wrapper that converts ValueError → HTTPException for router use."""
+    try:
+        persist_partial_state(thread_id, partial_state)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 def _check_ggl_permission(thread_id: str, thread_state: ThreadState | None = None) -> ThreadState:
@@ -101,7 +61,7 @@ def _check_ggl_permission(thread_id: str, thread_state: ThreadState | None = Non
     Raises:
         HTTPException: 403 if thread is not a GGL thread.
     """
-    state = thread_state or _get_thread_state(thread_id)
+    state = thread_state or _get_thread_state(thread_id)  # type: ignore[assignment]
 
     if state is None:
         raise HTTPException(status_code=404, detail=f"Thread '{thread_id}' not found")

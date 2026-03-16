@@ -15,3 +15,14 @@ export async function fetchThreadInfo(threadId: string): Promise<ThreadInfoRespo
   }
   return response.json();
 }
+
+export async function deleteThread(threadId: string): Promise<void> {
+  const response = await fetch(
+    `${getBackendBaseURL()}/api/threads/${threadId}`,
+    { method: "DELETE" },
+  );
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail ?? "Failed to delete thread");
+  }
+}
