@@ -52,4 +52,4 @@ web/
 # Deployment artifacts
 backend/Dockerfile.langgraph
 
-.docs/
+.mine/
