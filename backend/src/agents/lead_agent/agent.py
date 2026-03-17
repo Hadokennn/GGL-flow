@@ -38,6 +38,30 @@ def _resolve_model_name(requested_model_name: str | None = None) -> str:
     return default_model_name
 
 
+def _resolve_subagent_enabled_for_ggl(config: RunnableConfig, base_subagent_enabled: bool) -> bool:
+    """GGL first research (topic_graph absent): force subagent. Other turns: use config."""
+    cfg = config.get("configurable", {})
+    thread_id = cfg.get("thread_id")
+    if not thread_id:
+        return True  # New thread, first message → first research
+
+    try:
+        from src.gateway.checkpoint_utils import get_checkpoint_tuple
+
+        checkpoint_tuple = get_checkpoint_tuple(thread_id)
+        if checkpoint_tuple is None:
+            return True  # New thread, first research
+        channel_values = checkpoint_tuple.checkpoint.get("channel_values", {}) or {}
+        ggl = channel_values.get("ggl") or {}
+        topic_graph = ggl.get("topic_graph")
+        if not topic_graph or not topic_graph.get("nodes"):
+            return True  # First research, building graph
+        return base_subagent_enabled
+    except Exception:
+        logger.debug("Failed to resolve GGL topic_graph for subagent override", exc_info=True)
+        return base_subagent_enabled
+
+
 def _resolve_agent_variant(config: RunnableConfig) -> str:
     """Resolve agent variant with priority: state > configurable > default."""
     cfg = config.get("configurable", {})
@@ -300,6 +324,8 @@ def make_lead_agent(config: RunnableConfig):
     requested_model_name: str | None = cfg.get("model_name") or cfg.get("model")
     is_plan_mode = cfg.get("is_plan_mode", False)
     subagent_enabled = cfg.get("subagent_enabled", False)
+    if _resolve_agent_variant(config) == "ggl":
+        subagent_enabled = _resolve_subagent_enabled_for_ggl(config, subagent_enabled)
     max_concurrent_subagents = cfg.get("max_concurrent_subagents", 3)
     is_bootstrap = cfg.get("is_bootstrap", False)
     agent_name = cfg.get("agent_name")

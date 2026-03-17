@@ -163,4 +163,13 @@ class KnowledgeCardProcessor:
             existing_ids = existing_ids + [node_id]
         merged_ggl["knowledge_card_node_ids"] = existing_ids
 
-        persist_partial_state(thread_id, {"ggl": merged_ggl})
+        # Add knowledge card file to artifacts so it appears in the download list
+        artifact_path = f"/mnt/user-data/outputs/knowledge_cards/{node_id}.md"
+        existing_artifacts: list[str] = list(channel_values.get("artifacts") or [])
+        if artifact_path not in existing_artifacts:
+            existing_artifacts = existing_artifacts + [artifact_path]
+
+        persist_partial_state(
+            thread_id,
+            {"ggl": merged_ggl, "artifacts": existing_artifacts},
+        )

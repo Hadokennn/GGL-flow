@@ -143,24 +143,88 @@ function KnowledgeCardPreview({ nodeLabel, card, onClose }: KnowledgeCardPreview
   );
 }
 
-function circularLayout(
-  nodes: TopicNodeType[],
-  activeNodeId: string | null,
-) {
-  const width = 640;
-  const height = 480;
-  const centerX = width / 2;
-  const centerY = height / 2;
-  const radius = Math.min(width, height) * 0.33;
+const NODE_WIDTH = 96;
+const NODE_HEIGHT = 36;
+const LEVEL_GAP = 80;
+const SIBLING_GAP = 48;
 
-  return nodes.map((node, index) => {
-    const angle = (Math.PI * 2 * index) / nodes.length;
+/** Mind-map style hierarchical layout: root at top, children below, spread horizontally. */
+function mindMapLayout(
+  nodes: TopicNodeType[],
+  edges: [string, string][],
+  activeNodeId: string | null,
+  currentPath: string[] | null,
+) {
+  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+  const childrenMap = new Map<string, string[]>();
+  for (const [source, target] of edges) {
+    if (nodeMap.has(source) && nodeMap.has(target)) {
+      const list = childrenMap.get(source) ?? [];
+      if (!list.includes(target)) list.push(target);
+      childrenMap.set(source, list);
+    }
+  }
+
+  const roots: string[] = currentPath?.[0]
+    ? [currentPath[0]]
+    : nodes.filter((n) => !edges.some(([, t]) => t === n.id)).map((n) => n.id);
+  if (roots.length === 0 && nodes.length > 0) roots.push(nodes[0]!.id);
+
+  const depthMap = new Map<string, number>();
+  const visit = (id: string, d: number) => {
+    if (depthMap.has(id)) return;
+    depthMap.set(id, d);
+    for (const c of childrenMap.get(id) ?? []) visit(c, d + 1);
+  };
+  for (const r of roots) visit(r, 0);
+  for (const n of nodes) if (!depthMap.has(n.id)) depthMap.set(n.id, 999);
+
+  const byLevel = new Map<number, string[]>();
+  for (const [id, d] of depthMap) {
+    if (d < 999) {
+      const list = byLevel.get(d) ?? [];
+      list.push(id);
+      byLevel.set(d, list);
+    }
+  }
+
+  const positions = new Map<string, { x: number; y: number }>();
+  let maxWidth = 0;
+  const levels = [...byLevel.entries()].sort((a, b) => a[0] - b[0]);
+  for (const [level, ids] of levels) {
+    const totalW = ids.length * NODE_WIDTH + (ids.length - 1) * SIBLING_GAP;
+    maxWidth = Math.max(maxWidth, totalW);
+    const startX = -totalW / 2 + NODE_WIDTH / 2 + SIBLING_GAP / 2;
+    ids.forEach((id, i) => {
+      positions.set(id, {
+        x: startX + i * (NODE_WIDTH + SIBLING_GAP),
+        y: level * (NODE_HEIGHT + LEVEL_GAP),
+      });
+    });
+  }
+
+  const orphanIds = nodes.filter((n) => !positions.has(n.id)).map((n) => n.id);
+  const maxLevel = levels.length ? Math.max(...levels.map(([l]) => l)) : 0;
+  orphanIds.forEach((id, i) => {
+    positions.set(id, {
+      x: -maxWidth / 2 + NODE_WIDTH / 2 + i * (NODE_WIDTH + SIBLING_GAP),
+      y: (maxLevel + 1) * (NODE_HEIGHT + LEVEL_GAP),
+    });
+  });
+
+  const minX = Math.min(...[...positions.values()].map((p) => p.x));
+  const minY = Math.min(...[...positions.values()].map((p) => p.y));
+  const offsetX = -minX + 24;
+  const offsetY = -minY + 24;
+
+  return nodes.map((node) => {
+    const pos = positions.get(node.id) ?? { x: 0, y: 0 };
     return {
       id: node.id,
       type: "topic" as const,
       position: {
-        x: centerX + radius * Math.cos(angle) - 48,
-        y: centerY + radius * Math.sin(angle) - 18,
+        x: pos.x + offsetX - NODE_WIDTH / 2,
+        y: pos.y + offsetY - NODE_HEIGHT / 2,
       },
       data: {
         label: node.label,
@@ -188,9 +252,11 @@ function KnowledgeMapInner({ threadId, className }: KnowledgeMapProps) {
 
   const flowNodes = useMemo(() => {
     if (!gglState?.topic_graph?.nodes.length) return [];
-    return circularLayout(
+    return mindMapLayout(
       gglState.topic_graph.nodes,
+      gglState.topic_graph.edges ?? [],
       gglState.active_node_id ?? null,
+      gglState.current_path ?? null,
     ).map((n) => ({
       ...n,
       data: {
@@ -198,7 +264,13 @@ function KnowledgeMapInner({ threadId, className }: KnowledgeMapProps) {
         hasCard: Boolean(knowledgeCards?.[n.id]),
       },
     }));
-  }, [gglState?.topic_graph?.nodes, gglState?.active_node_id, knowledgeCards]);
+  }, [
+    gglState?.topic_graph?.nodes,
+    gglState?.topic_graph?.edges,
+    gglState?.active_node_id,
+    gglState?.current_path,
+    knowledgeCards,
+  ]);
 
   const flowEdges = useMemo(() => {
     if (!gglState?.topic_graph?.edges?.length) return [];
