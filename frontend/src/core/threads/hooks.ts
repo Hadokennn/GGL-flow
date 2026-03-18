@@ -6,6 +6,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
+import type { MutableRefObject } from "react";
+import type { PendingCheckpoint } from "@/components/workspace/messages/context";
 
 import { getAPIClient } from "../api";
 import { deleteThread as deleteThreadApi } from "./api";
@@ -30,6 +32,8 @@ export type ThreadStreamOptions = {
   onStart?: (threadId: string) => void;
   onFinish?: (state: AgentThreadState) => void;
   onToolEnd?: (event: ToolEndEvent) => void;
+  /** Ref for checkpoint from setActiveNode; submit will use and clear before run */
+  pendingCheckpointRef?: MutableRefObject<PendingCheckpoint | null>;
 };
 
 export function useThreadStream({
@@ -39,6 +43,7 @@ export function useThreadStream({
   onStart,
   onFinish,
   onToolEnd,
+  pendingCheckpointRef,
 }: ThreadStreamOptions) {
   const { t } = useI18n();
   // Track the thread ID that is currently streaming to handle thread changes during streaming
@@ -307,6 +312,9 @@ export function useThreadStream({
           }),
         );
 
+        const checkpoint = pendingCheckpointRef?.current ?? null;
+        if (pendingCheckpointRef) pendingCheckpointRef.current = null;
+
         await thread.submit(
           {
             messages: [
@@ -327,6 +335,11 @@ export function useThreadStream({
             threadId: threadId,
             streamSubgraphs: true,
             streamResumable: true,
+            ...(checkpoint && {
+              checkpoint: {
+                ...checkpoint,
+              },
+            }),
             config: {
               recursion_limit: 1000,
             },
@@ -347,7 +360,14 @@ export function useThreadStream({
         throw error;
       }
     },
-    [thread, _handleOnStart, t.uploads.uploadingFiles, context, queryClient],
+    [
+      thread,
+      _handleOnStart,
+      t.uploads.uploadingFiles,
+      context,
+      queryClient,
+      pendingCheckpointRef,
+    ],
   );
 
   // Merge thread with optimistic messages for display

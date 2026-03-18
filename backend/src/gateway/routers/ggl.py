@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from src.agents.thread_state import ThreadState
-from src.gateway.checkpoint_utils import get_checkpoint_tuple, persist_partial_state
+from src.gateway.checkpoint_utils import get_checkpoint_tuple
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/threads", tags=["ggl"])
@@ -23,33 +23,12 @@ class GGLGraphResponse(BaseModel):
     knowledge_cards: dict | None = Field(default=None, description="Knowledge cards by node ID")
 
 
-class ActiveNodeUpdate(BaseModel):
-    """Request body for updating active node."""
-
-    node_id: str = Field(..., description="Node ID to set as active")
-
-
-class ActiveNodeResponse(BaseModel):
-    """Response after updating active node."""
-
-    active_node_id: str = Field(..., description="Updated active node ID")
-    topic_graph_version: int | None = Field(default=None, description="Current graph version")
-
-
 def _get_thread_state(thread_id: str) -> ThreadState | None:
     checkpoint_tuple = get_checkpoint_tuple(thread_id)
     if checkpoint_tuple is None:
         return None
     channel_values = checkpoint_tuple.checkpoint.get("channel_values", {})
     return channel_values if isinstance(channel_values, dict) else {}
-
-
-def _persist_partial_state(thread_id: str, partial_state: dict) -> None:
-    """Wrapper that converts ValueError → HTTPException for router use."""
-    try:
-        persist_partial_state(thread_id, partial_state)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 def _check_ggl_permission(thread_id: str, thread_state: ThreadState | None = None) -> ThreadState:
@@ -107,42 +86,4 @@ async def get_ggl_graph(thread_id: str) -> GGLGraphResponse:
         digression_stack=ggl_state.get("digression_stack"),
         current_path=ggl_state.get("current_path"),
         knowledge_cards=ggl_state.get("knowledge_cards"),
-    )
-
-
-@router.put(
-    "/{thread_id}/ggl/active-node",
-    response_model=ActiveNodeResponse,
-    summary="Set Active Node",
-    description="Set the active node in the topic graph (double-click in Canvas).",
-)
-async def set_active_node(thread_id: str, request: ActiveNodeUpdate) -> ActiveNodeResponse:
-    """Set active node for a GGL thread.
-
-    Args:
-        thread_id: The thread ID.
-        request: The node ID to set as active.
-
-    Returns:
-        Updated active node info.
-
-    Raises:
-        HTTPException: 403 if thread is not a GGL thread, 404 if node not found.
-    """
-    thread_state = _check_ggl_permission(thread_id)
-    ggl_state = dict(thread_state.get("ggl") or {})
-
-    topic_graph = ggl_state.get("topic_graph")
-    if topic_graph:
-        nodes = topic_graph.get("nodes", [])
-        node_ids = [n["id"] for n in nodes]
-        if request.node_id not in node_ids:
-            raise HTTPException(status_code=404, detail=f"Node '{request.node_id}' not found in graph")
-
-    ggl_state["active_node_id"] = request.node_id
-    _persist_partial_state(thread_id, {"ggl": ggl_state})
-
-    return ActiveNodeResponse(
-        active_node_id=request.node_id,
-        topic_graph_version=ggl_state.get("topic_graph_version"),
     )

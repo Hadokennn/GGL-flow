@@ -13,11 +13,12 @@ import {
   useEdgesState,
 } from "@xyflow/react";
 import { AlertCircle, BookOpen, CheckCircle2, Lightbulb, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { setActiveNode } from "@/core/ggl/api";
 import { useGGL } from "@/core/ggl/provider";
+import { ThreadContext } from "@/components/workspace/messages/context";
 import type { KnowledgeCard, TopicNode as TopicNodeType } from "@/core/ggl/types";
 import { cn } from "@/lib/utils";
 
@@ -242,6 +243,8 @@ interface KnowledgeMapProps {
 
 function KnowledgeMapInner({ threadId, className }: KnowledgeMapProps) {
   const { gglState, refetch, isLoading, isEnabled, error } = useGGL();
+  const threadCtx = useContext(ThreadContext);
+  const pendingCheckpointRef = threadCtx?.pendingCheckpointRef;
   const [previewNodeId, setPreviewNodeId] = useState<string | null>(null);
 
   type TopicFlowNode = Node<TopicNodeData, "topic">;
@@ -306,13 +309,14 @@ function KnowledgeMapInner({ threadId, className }: KnowledgeMapProps) {
       if (!isEnabled) return;
       setPreviewNodeId(null);
       try {
-        await setActiveNode(threadId, node.id);
+        const cp = await setActiveNode(threadId, node.id);
+        if (pendingCheckpointRef) pendingCheckpointRef.current = cp;
         await refetch();
       } catch (err) {
         console.error("Failed to set active node:", err);
       }
     },
-    [threadId, refetch, isEnabled],
+    [threadId, refetch, isEnabled, pendingCheckpointRef],
   );
 
   if (!isEnabled) {

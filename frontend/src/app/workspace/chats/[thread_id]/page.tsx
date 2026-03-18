@@ -13,7 +13,10 @@ import { useRightPanel } from "@/components/workspace/chats/right-panel-context"
 import { KnowledgeMapTrigger } from "@/components/workspace/ggl";
 import { InputBox } from "@/components/workspace/input-box";
 import { MessageList } from "@/components/workspace/messages";
-import { ThreadContext } from "@/components/workspace/messages/context";
+import {
+  type PendingCheckpoint,
+  ThreadContext,
+} from "@/components/workspace/messages/context";
 import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { Welcome } from "@/components/workspace/welcome";
@@ -52,34 +55,30 @@ function GGLAutoOpen() {
   return null;
 }
 
-export default function ChatPage() {
+function ChatContentWithThread({
+  threadId,
+  isNewThread,
+  isMock,
+  agentVariant,
+}: {
+  threadId: string;
+  isNewThread: boolean;
+  isMock: boolean;
+  agentVariant: string | null;
+}) {
   const { t } = useI18n();
   const [settings, setSettings] = useLocalSettings();
-  const { threadId, isNewThread, setIsNewThread, isMock } = useThreadChat();
-  const [agentVariant, setAgentVariant] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!threadId || isNewThread) {
-      setAgentVariant(null);
-      return;
-    }
-    // TODO: This should be batching fetch, not only fetch variant info.
-    fetchThreadInfo(threadId)
-      .then((info) => setAgentVariant(info.agent_variant))
-      .catch(() => setAgentVariant(null));
-  }, [threadId, isNewThread]);
-
-  useSpecificChatMode();
-
+  const { setIsNewThread } = useThreadChat();
   const { showNotification } = useNotification();
+  const pendingCheckpointRef = useRef<PendingCheckpoint | null>(null);
 
   const [thread, sendMessage] = useThreadStream({
     threadId: isNewThread ? undefined : threadId,
     context: settings.context,
     isMock,
+    pendingCheckpointRef,
     onStart: () => {
       setIsNewThread(false);
-      // ! Important: Never use next.js router for navigation in this case, otherwise it will cause the thread to re-mount and lose all states. Use native history API instead.
       history.replaceState(null, "", `/workspace/chats/${threadId}`);
     },
     onFinish: (state) => {
@@ -99,6 +98,7 @@ export default function ChatPage() {
       }
     },
   });
+
   const effectiveAgentVariant =
     (thread?.values?.agent_variant as string | null | undefined) ?? agentVariant;
   const gglEnabled = effectiveAgentVariant === "ggl";
@@ -114,7 +114,7 @@ export default function ChatPage() {
   }, [thread]);
 
   return (
-    <ThreadContext.Provider value={{ thread, isMock }}>
+    <ThreadContext.Provider value={{ thread, isMock, pendingCheckpointRef }}>
       <GGLProvider
         threadId={threadId}
         enabled={gglEnabled}
@@ -195,5 +195,33 @@ export default function ChatPage() {
       </ChatBox>
       </GGLProvider>
     </ThreadContext.Provider>
+  );
+}
+
+export default function ChatPage() {
+  const { threadId, isNewThread, isMock } = useThreadChat();
+  const [agentVariant, setAgentVariant] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!threadId || isNewThread) {
+      setAgentVariant(null);
+      return;
+    }
+    fetchThreadInfo(threadId)
+      .then((info) => setAgentVariant(info.agent_variant))
+      .catch(() => setAgentVariant(null));
+  }, [threadId, isNewThread]);
+
+  useSpecificChatMode();
+
+  if (!threadId) return null;
+
+  return (
+    <ChatContentWithThread
+      threadId={threadId}
+      isNewThread={isNewThread}
+      isMock={isMock}
+      agentVariant={agentVariant}
+    />
   );
 }

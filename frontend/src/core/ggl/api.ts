@@ -1,7 +1,7 @@
+import { getAPIClient } from "@/core/api/api-client";
 import { getBackendBaseURL } from "@/core/config";
 
 import type {
-  ActiveNodeResponse,
   AgentVariantsResponse,
   GGLGraphResponse,
 } from "./types";
@@ -27,23 +27,20 @@ export async function fetchGGLGraph(
   return response.json();
 }
 
+/** Update active node via LangGraph SDK; ggl_reducer merges into existing state.
+ * No asNode - create_agent graph has opaque node names. Middleware reads from checkpoint as fallback.
+ * @returns checkpoint for submit (pass to setPendingCheckpoint)
+ */
 export async function setActiveNode(
   threadId: string,
   nodeId: string,
-): Promise<ActiveNodeResponse> {
-  const response = await fetch(
-    `${getBackendBaseURL()}/api/threads/${threadId}/ggl/active-node`,
-    {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ node_id: nodeId }),
-    },
-  );
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.detail ?? "Failed to set active node");
-  }
-  return response.json();
+): Promise<{ checkpoint_ns: string; checkpoint_id: string } | null> {
+  const client = getAPIClient();
+  const result = await client.threads.updateState(threadId, {
+    values: { ggl: { active_node_id: nodeId } },
+  });
+  const cid = result?.configurable?.checkpoint_id;
+  return typeof cid === "string"
+    ? { checkpoint_ns: "", checkpoint_id: cid }
+    : null;
 }

@@ -6,9 +6,9 @@ cd "$REPO_ROOT"
 
 mkdir -p logs
 
-echo "Starting Gateway API..."
-(cd backend && uv run uvicorn src.gateway.app:app --host 0.0.0.0 --port 8001 --reload > ../logs/gateway.log 2>&1) &
-GATEWAY_PID=$!
+# echo "Starting Gateway API..."
+# (cd backend && uv run uvicorn src.gateway.app:app --host 0.0.0.0 --port 8001 --reload > ../logs/gateway.log 2>&1) &
+# GATEWAY_PID=$!
 
 echo "Starting Frontend..."
 (cd frontend && pnpm run dev > ../logs/frontend.log 2>&1) &
