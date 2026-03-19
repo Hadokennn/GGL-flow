@@ -3,7 +3,7 @@ from typing import NotRequired
 
 from langchain.agents import AgentState
 from langchain.agents.middleware import AgentMiddleware
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage
 from langgraph.runtime import Runtime
 
 from src.agents.knowledge_card.queue import get_knowledge_card_queue
@@ -103,7 +103,7 @@ class GGLMiddleware(AgentMiddleware[GGLMiddlewareState]):
             "**禁止跳过 subagent 并行研究直接生成图谱。**\n"
             "**必须调用 update_ggl_graph 工具才能让图谱出现在前端。**\n"
         )
-        return {"messages": [AIMessage(name="ggl_context", content=content)]}
+        return {"messages": [HumanMessage(name="ggl_context", content=content)]}
 
     def _build_context_message(
         self,
