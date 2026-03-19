@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
-import type { MutableRefObject } from "react";
+import type { RefObject } from "react";
 import type { PendingCheckpoint } from "@/components/workspace/messages/context";
 
 import { getAPIClient } from "../api";
@@ -33,7 +33,7 @@ export type ThreadStreamOptions = {
   onFinish?: (state: AgentThreadState) => void;
   onToolEnd?: (event: ToolEndEvent) => void;
   /** Ref for checkpoint from setActiveNode; submit will use and clear before run */
-  pendingCheckpointRef?: MutableRefObject<PendingCheckpoint | null>;
+  pendingCheckpointRef?: RefObject<PendingCheckpoint | null>;
 };
 
 export function useThreadStream({

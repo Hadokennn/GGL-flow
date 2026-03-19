@@ -3,12 +3,12 @@ from typing import NotRequired
 
 from langchain.agents import AgentState
 from langchain.agents.middleware import AgentMiddleware
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from langgraph.runtime import Runtime
 
 from src.agents.knowledge_card.queue import get_knowledge_card_queue
 from src.agents.thread_state import GGLState
-from src.ggl.intent import IntentType, classify_intent
+from src.ggl.intent import IntentType, IntentResult, classify_intent
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class GGLMiddlewareState(AgentState):
 
 class GGLMiddleware(AgentMiddleware[GGLMiddlewareState]):
     def __init__(self):
-        self.intent_timeout_ms = 800
+        self.intent_timeout_ms = 10000
 
     def _has_init_been_injected(self, messages: list) -> bool:
         """Check if init instruction was already injected (avoid duplicate on every LLM call)."""
@@ -45,8 +45,8 @@ class GGLMiddleware(AgentMiddleware[GGLMiddlewareState]):
     def _extract_last_user_message(self, messages: list) -> str:
         """Extract the last user message (HumanMessage, not ggl_context)."""
         for msg in reversed(messages):
-            if isinstance(msg, HumanMessage) and getattr(msg, "name", None) != "ggl_context":
-                content = getattr(msg, "content", "")
+            if isinstance(msg, HumanMessage):
+                content = getattr(msg, "text", "")
                 if isinstance(content, str):
                     return content.strip()
                 return ""
@@ -72,10 +72,10 @@ class GGLMiddleware(AgentMiddleware[GGLMiddlewareState]):
         return normalized in _MASTERED_CONFIRMATIONS
 
     def _has_context_been_injected(self, messages: list) -> bool:
-        """Check if a regular ggl_context (non-init) was already injected this turn.
+        """Check if ggl_context was already injected for the current user turn.
 
-        Only considers messages after the last user message (HumanMessage without
-        name='ggl_context'), so we re-inject context on each new turn.
+        Only run classify_intent when the last message is a HumanMessage (start of turn).
+        Once we've injected ggl_context after the last user message, skip until next user message.
         """
         last_user_idx = -1
         for i in range(len(messages) - 1, -1, -1):
@@ -93,23 +93,22 @@ class GGLMiddleware(AgentMiddleware[GGLMiddlewareState]):
     def _build_init_message(self) -> dict:
         """Inject mandatory init instruction when topic_graph is absent (first message)."""
         content = (
-            "<ggl_context>\n"
             "当前会话为 GGL 学习模式，知识图谱尚未初始化。\n\n"
             "**你的首要任务是初始化知识图谱，必须严格按以下步骤执行：**\n\n"
             f"1. 立即使用 `read_file` 工具读取 GGL 初始化 Skill：`{_GGL_INIT_SKILL_PATH}`\n"
             "2. 按照 Skill 中的流程，使用 `task` 工具启动 3 个并行 subagent 进行深度研究\n"
-            "3. 综合研究结果，调用 `update_ggl_graph` 工具将图谱写入 state\n"
-            "4. 向用户展示图谱概览和推荐学习路径\n\n"
+            "3. 综合 subagent 的研究结果，用 `write_file` 将调研报告写入 `/mnt/user-data/outputs`，并用 `present_files` 加入 artifacts\n"
+            "4. 调用 `update_ggl_graph` 工具将图谱写入 state\n"
+            "5. 向用户展示图谱概览和推荐学习路径\n\n"
             "**禁止跳过 subagent 并行研究直接生成图谱。**\n"
             "**必须调用 update_ggl_graph 工具才能让图谱出现在前端。**\n"
-            "</ggl_context>"
         )
-        return {"messages": [HumanMessage(name="ggl_context", content=content)]}
+        return {"messages": [AIMessage(name="ggl_context", content=content)]}
 
     def _build_context_message(
         self,
         state: GGLMiddlewareState,
-        intent: IntentType | None,
+        intent_result: IntentResult,
     ) -> dict | None:
         ggl_state = state.get("ggl")
         active_node = ggl_state.get("active_node_id") if ggl_state else None
@@ -142,7 +141,7 @@ class GGLMiddleware(AgentMiddleware[GGLMiddlewareState]):
                     card = knowledge_cards[active_node]
                     if card.get("summary"):
                         context_parts.append(f"\n节点摘要: {card['summary'][:200]}")
-
+        intent = intent_result.intent
         if intent is not None:
             context_parts.append(f"\n当前意图: {intent.value}")
 
@@ -152,6 +151,15 @@ class GGLMiddleware(AgentMiddleware[GGLMiddlewareState]):
             context_parts.append("\n注意: 用户想要复习已学内容。")
         elif intent == IntentType.MASTERED:
             context_parts.append("\n注意: 用户已掌握当前节点，请调用 `update_ggl_graph` 将该节点状态改为 mastered 并推进到下一节点。")
+        elif intent == IntentType.JUMP:
+            context_parts.append(f"\n注意: 用户想要跳转到另一个主题{intent_result.next_node_id}，请调用 `update_ggl_graph` 将该节点状态改为 exploring，再开始讲解。")
+        elif (
+            active_node_data
+            and active_node_data.get("state") == "unvisited"
+        ):
+            context_parts.append(
+                "\n注意: 用户手动跳转到了未学习的节点，请先调用 `update_ggl_graph` 将该节点状态改为 exploring，再开始讲解。"
+            )
 
         wrapped = "<ggl_context>\n" + _CONTEXT_MARKER + "\n" + "\n".join(context_parts) + "\n</ggl_context>"
         return {"messages": [HumanMessage(name="ggl_context", content=wrapped)]}
@@ -210,7 +218,6 @@ class GGLMiddleware(AgentMiddleware[GGLMiddlewareState]):
             logger.debug("GGL context already injected this turn — skip")
             return None
 
-        intent_context = self._build_intent_context(ggl_state)
         last_user_msg = self._extract_last_user_message(messages)
 
         # Heuristic: short confirmation + exploring node → MASTERED (classify_intent often returns Continue)
@@ -218,14 +225,15 @@ class GGLMiddleware(AgentMiddleware[GGLMiddlewareState]):
             logger.info("GGL heuristic: short confirmation + exploring → MASTERED")
             intent = IntentType.MASTERED
         else:
-            intent = classify_intent(
-                messages,
-                timeout_ms=self.intent_timeout_ms,
-                ggl_context=intent_context,
-            )
-            logger.info(f"GGL intent classification result: {intent}")
-
-        return self._build_context_message(state, intent)
+            intent_context = self._build_intent_context(ggl_state)
+            user_messages = [
+                m for m in messages
+                if isinstance(m, HumanMessage) and getattr(m, "name", None) != "ggl_context"
+            ]
+            intent_result = classify_intent(user_messages, timeout_ms=self.intent_timeout_ms, ggl_context=intent_context)
+            logger.info(f"GGL intent classification result: {intent_result}")
+            return self._build_context_message(state, intent_result)
+        return None
 
     def after_agent(
         self,

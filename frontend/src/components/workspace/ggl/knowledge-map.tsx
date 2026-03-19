@@ -18,7 +18,7 @@ import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { setActiveNode } from "@/core/ggl/api";
 import { useGGL } from "@/core/ggl/provider";
-import { ThreadContext } from "@/components/workspace/messages/context";
+import { ThreadContext, type PendingCheckpoint } from "@/components/workspace/messages/context";
 import type { KnowledgeCard, TopicNode as TopicNodeType } from "@/core/ggl/types";
 import { cn } from "@/lib/utils";
 

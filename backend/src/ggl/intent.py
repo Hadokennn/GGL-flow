@@ -19,32 +19,35 @@ class IntentType(str, Enum):
     DIGRESSION = "Digression"
     REVIEW = "Review"
     MASTERED = "Mastered"
+    JUMP = "Jump"
 
 
 class IntentResult(BaseModel):
     intent: IntentType
     reason: str
+    next_node_id: str | None = None
 
 
 INTENT_PROMPT = """你是一个学习助手，负责分析用户消息的意图。
 
-当前学习场景是 Graph Guided Learning (GGL)，用户正在学习一个主题知识图谱。
+当前学习场景是 Graph Guided Learning (GGL)，用户正在学习一个主题知识图谱。这个图谱中的节点是知识点，边是知识点之间的关系。
 
 请分析用户消息的意图并分类：
 
-1. Continue (继续学习): 用户想要继续当前主题的深入学习
-2. Digression (偏离主题): 用户提问与当前学习主题无关的内容
-3. Review (复习): 用户想要复习已学内容
+1. Continue (继续学习): 用户想要继续当前节点的深入学习
+2. Digression (偏离主题): 用户提问与当前节点和学习主题都无关的内容
+3. Review (复习): 用户想要复习已学内容，需要返回复习的节点 ID
 4. Mastered (已掌握): 用户表示已掌握某个知识点
+5. Jump (跳转): 用户想要跳转到另一个节点，需要返回下一个节点的 ID
 
-分析用户最后一条消息，给出意图分类和原因。
+分析用户最后一条消息，给出意图分类和原因。如果意图是 Jump，需要返回下一个节点的 ID。
 
 {ggl_context_block}
 
 用户消息: {user_message}
 
 请严格返回 JSON（不要 markdown 代码块），格式如下：
-{{"intent":"Continue|Digression|Review|Mastered","reason":"..."}}"""
+{{"intent":"Continue|Digression|Review|Mastered|Jump","reason":"...","next_node_id":"..."}}"""
 
 
 _intent_cache: dict[str, tuple[IntentType, float]] = {}
@@ -84,7 +87,8 @@ def _parse_intent_from_content(content: str) -> IntentResult | None:
         raw_intent = str(parsed.get("intent", "")).strip()
         reason = str(parsed.get("reason", "")).strip() or "parsed_from_json"
         intent = IntentType(raw_intent)
-        return IntentResult(intent=intent, reason=reason)
+        next_node_id = str(parsed.get("next_node_id", "")).strip() or None
+        return IntentResult(intent=intent, reason=reason, next_node_id=next_node_id)
     except Exception:
         # Heuristic fallback when provider doesn't obey JSON instruction.
         lowered = text.lower()
@@ -93,6 +97,7 @@ def _parse_intent_from_content(content: str) -> IntentResult | None:
                 return IntentResult(
                     intent=intent_type,
                     reason="heuristic_keyword_match",
+                    next_node_id=None,
                 )
     return None
 
@@ -115,9 +120,10 @@ def _build_context_block(ggl_context: dict[str, Any] | None) -> str:
 
 def _classify_intent_with_llm(llm: Any, user_message: str, ggl_context: dict[str, Any] | None = None) -> IntentResult | None:
     try:
+        _context_block = _build_context_block(ggl_context)
         prompt = INTENT_PROMPT.format(
             user_message=user_message,
-            ggl_context_block=_build_context_block(ggl_context),
+            ggl_context_block=_context_block,
         )
         response = llm.invoke(prompt)
         content = response.content if hasattr(response, "content") else str(response)
@@ -130,15 +136,15 @@ def _classify_intent_with_llm(llm: Any, user_message: str, ggl_context: dict[str
 def classify_intent(
     messages: list[Any],
     llm: Any = None,
-    timeout_ms: int = 800,
+    timeout_ms: int = 8000,
     ggl_context: dict[str, Any] | None = None,
-) -> IntentType:
+) -> IntentResult:
     if not messages:
-        return IntentType.CONTINUE
+        return IntentResult(intent=IntentType.CONTINUE, reason="no_messages")
 
     last_user_message = _extract_last_user_message(messages)
     if not last_user_message:
-        return IntentType.CONTINUE
+        return IntentResult(intent=IntentType.CONTINUE, reason="no_last_user_message")
 
     context_key = json.dumps(ggl_context or {}, ensure_ascii=False, sort_keys=True)
     msg_hash = _get_message_hash(f"{last_user_message}|{context_key}")
@@ -153,7 +159,7 @@ def classify_intent(
             llm = create_chat_model(thinking_enabled=False)
         except Exception as e:
             logger.warning(f"Failed to create LLM for intent classification: {e}")
-            return IntentType.CONTINUE
+            return IntentResult(intent=IntentType.CONTINUE, reason="failed_to_create_llm")
 
     start_ts = time.time()
     try:
@@ -162,10 +168,10 @@ def classify_intent(
             elapsed_ms = (time.time() - start_ts) * 1000
             if elapsed_ms > timeout_ms:
                 logger.warning(f"Intent classification timed out logically ({elapsed_ms:.1f}ms > {timeout_ms}ms), fallback Continue")
-                return IntentType.CONTINUE
+                return IntentResult(intent=IntentType.CONTINUE, reason="timed_out")
             _intent_cache[msg_hash] = (result.intent, time.time())
-            return result.intent
+            return result
     except Exception as e:
         logger.warning(f"Intent classification error: {e}")
 
-    return IntentType.CONTINUE
+    return IntentResult(intent=IntentType.CONTINUE, reason="unknown_error")

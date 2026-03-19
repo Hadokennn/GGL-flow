@@ -1,5 +1,5 @@
 import type { BaseStream } from "@langchain/langgraph-sdk/react";
-import type { MutableRefObject } from "react";
+import type { RefObject } from "react";
 import { createContext, useContext } from "react";
 
 import type { AgentThreadState } from "@/core/threads";
@@ -8,13 +8,14 @@ import type { AgentThreadState } from "@/core/threads";
 export type PendingCheckpoint = {
   checkpoint_ns: string;
   checkpoint_id: string;
+  checkpoint_map: Record<string, unknown> | null;
 };
 
 export interface ThreadContextType {
   thread: BaseStream<AgentThreadState>;
   isMock?: boolean;
   /** Ref for checkpoint from setActiveNode; sendMessage reads and clears before submit */
-  pendingCheckpointRef?: MutableRefObject<PendingCheckpoint | null>;
+  pendingCheckpointRef?: RefObject<PendingCheckpoint | null>;
 }
 
 export const ThreadContext = createContext<ThreadContextType | undefined>(

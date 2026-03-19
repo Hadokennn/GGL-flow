@@ -34,13 +34,13 @@ export async function fetchGGLGraph(
 export async function setActiveNode(
   threadId: string,
   nodeId: string,
-): Promise<{ checkpoint_ns: string; checkpoint_id: string } | null> {
+): Promise<{ checkpoint_ns: string; checkpoint_id: string; checkpoint_map: Record<string, unknown> | null } | null> {
   const client = getAPIClient();
   const result = await client.threads.updateState(threadId, {
     values: { ggl: { active_node_id: nodeId } },
   });
   const cid = result?.configurable?.checkpoint_id;
   return typeof cid === "string"
-    ? { checkpoint_ns: "", checkpoint_id: cid }
+    ? { checkpoint_ns: "", checkpoint_id: cid, checkpoint_map: {} }
     : null;
 }

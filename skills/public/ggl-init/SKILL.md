@@ -1,7 +1,7 @@
 ---
 name: ggl-init
 description: GGL (Graph Guided Learning) 知识图谱初始化流程。当处于 GGL 模式且 topic_graph 尚未初始化时自动触发。执行深度研究并生成主题知识图谱。
-allowed-tools: web_search, web_fetch, task, update_ggl_graph
+allowed-tools: web_search, web_fetch, task, update_ggl_graph, write_file, present_files
 ---
 
 # GGL 知识图谱初始化 Skill
@@ -66,9 +66,18 @@ allowed-tools: web_search, web_fetch, task, update_ggl_graph
 
 ---
 
-### 阶段 2：生成知识图谱
+### 阶段 2：综合研究结果并生成知识图谱
 
-综合三个 subagent 的研究结果，构建知识图谱。
+**2a. 综合并写入调研报告**
+
+综合三个 subagent 的研究结果后，**必须**将调研报告写入文件并呈现给用户：
+
+1. 使用 `write_file` 将综合后的调研内容写入 `/mnt/user-data/outputs/[主题]_research.md`（文件名可用英文，如 `python_research.md`）
+2. 使用 `present_files` 工具将该文件路径加入 artifacts，使用户可在侧边栏查看和下载
+
+**2b. 构建知识图谱**
+
+基于综合结果，构建知识图谱。
 
 #### 节点设计原则
 
@@ -148,3 +157,4 @@ allowed-tools: web_search, web_fetch, task, update_ggl_graph
 - **节点命名用目标语言**：如果用户用中文提问，节点 label 用中文
 - **节点 id 始终用英文**：便于代码处理和前端渲染
 - **必须调用 update_ggl_graph**：不调用工具则图谱不会出现在前端
+- **必须写调研报告并 present_files**：综合 subagent 结果后，由你（lead agent）写入 `/mnt/user-data/outputs` 并调用 `present_files`，报告才会出现在用户 artifact 列表

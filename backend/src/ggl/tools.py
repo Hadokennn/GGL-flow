@@ -59,7 +59,7 @@ def update_ggl_graph_tool(
             return Command(
                 update={"messages": [ToolMessage(f"Error: each node must have 'id' and 'label', got: {n}", tool_call_id=tool_call_id)]},
             )
-        node_state = n.get("state", "unvisited")
+        node_state = n.get("state", "exploring")
         if node_state not in valid_states:
             node_state = "unvisited"
         validated_nodes.append(
