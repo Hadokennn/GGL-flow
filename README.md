@@ -18,20 +18,23 @@ GGL 在 DeerFlow 基础上扩展，提供：
 ---
 
 - 首次启动session，强制 Subagent 进行 Deep Research 学习主题，初始化知识图谱
-![subagent并行初始化知识图谱](./docs/subagent并行初始化知识图谱.gif)
-![lead-agent初始化知识图谱](./docs/初始化知识图谱.gif)
+
+     ![subagent并行初始化知识图谱](./docs/subagent并行初始化知识图谱.gif)
+     ![lead-agent初始化知识图谱](./docs/初始化知识图谱.gif)
 
 - 在与用户新一轮对话中，根据用户反馈调整知识graph，更新知识节点状态
-![意图识别、更新graph](./docs/意图识别、更新graph.png)
-![当前节点继续探索](./docs/当前节点继续探索.png)
+
+     ![意图识别、更新graph](./docs/意图识别、更新graph.png)
+     ![当前节点继续探索](./docs/当前节点继续探索.png)
 
 - 判断用户已经掌握当前知识点后，将节点状态设为 mastered，触发知识卡异步生成
-![异步更新知识卡片](./docs/异步更新知识卡片.png)
+
+     ![异步更新知识卡片](./docs/异步更新知识卡片.png)
 
 - 用户可手动选择要学习的知识图谱节点，下一次会话会带上选中节点的上下文
-![手动选择节点](./docs/手动更新graph.png)
 
--
+     ![手动选择节点](./docs/手动更新graph.png)
+
 
 ---
 
